@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from anthropic import Anthropic
+from openai import OpenAI
 from sqlalchemy.orm import Session
 
 from app.coach.tools import TOOL_DEFINITIONS, CoachTools
@@ -37,17 +38,77 @@ def _serialize_content(content: list) -> list[dict]:
     return result
 
 
-def run_coach_loop(
-    session: Session,
+def _openai_tools() -> list[dict]:
+    return [
+        {
+            "type": "function",
+            "name": tool["name"],
+            "description": tool["description"],
+            "parameters": tool["input_schema"],
+        }
+        for tool in TOOL_DEFINITIONS
+    ]
+
+
+def _run_openai_loop(
+    tools: CoachTools,
     settings: Settings,
     *,
-    username: str,
+    message: str,
+    history: list[dict],
+) -> str:
+    if not settings.openai_api_key:
+        raise CoachUnavailable("OPENAI_API_KEY is not configured")
+
+    client = OpenAI(api_key=settings.openai_api_key)
+    input_items: list = history[-settings.coach_history_limit :] + [
+        {"role": "user", "content": message}
+    ]
+    tool_definitions = _openai_tools()
+
+    for _ in range(settings.coach_max_tool_rounds):
+        response = client.responses.create(
+            model=settings.openai_model,
+            reasoning={"effort": settings.openai_reasoning_effort},
+            instructions=SYSTEM_PROMPT,
+            tools=tool_definitions,
+            input=input_items,
+            max_output_tokens=2000,
+            prompt_cache_key="chess-coach-v1",
+            store=False,
+        )
+        input_items += response.output
+        calls = [item for item in response.output if item.type == "function_call"]
+        if not calls:
+            if response.output_text:
+                return response.output_text
+            raise RuntimeError("Coach returned no text or tool calls")
+
+        for call in calls:
+            try:
+                value = tools.execute(call.name, json.loads(call.arguments))
+                output = json.dumps(value, default=str)
+            except Exception as exc:
+                output = json.dumps({"error": f"{type(exc).__name__}: {exc}"})
+            input_items.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call.call_id,
+                    "output": output,
+                }
+            )
+    raise RuntimeError("Coach exceeded the maximum number of tool rounds")
+
+
+def _run_anthropic_loop(
+    tools: CoachTools,
+    settings: Settings,
+    *,
     message: str,
     history: list[dict],
 ) -> str:
     if not settings.anthropic_api_key:
         raise CoachUnavailable("ANTHROPIC_API_KEY is not configured")
-    tools = CoachTools(session, username)
     client = Anthropic(api_key=settings.anthropic_api_key)
     messages = history[-settings.coach_history_limit :] + [{"role": "user", "content": message}]
 
@@ -89,3 +150,20 @@ def run_coach_loop(
             )
         messages.append({"role": "user", "content": results})
     raise RuntimeError("Coach exceeded the maximum number of tool rounds")
+
+
+def run_coach_loop(
+    session: Session,
+    settings: Settings,
+    *,
+    username: str,
+    message: str,
+    history: list[dict],
+) -> str:
+    tools = CoachTools(session, username)
+    provider = settings.ai_provider.strip().lower()
+    if provider == "openai":
+        return _run_openai_loop(tools, settings, message=message, history=history)
+    if provider == "anthropic":
+        return _run_anthropic_loop(tools, settings, message=message, history=history)
+    raise CoachUnavailable("AI_PROVIDER must be 'openai' or 'anthropic'")

@@ -1,1 +1,1 @@
-"""Anthropic tool-use coaching loop."""
+"""Provider-selectable tool-use coaching loop."""

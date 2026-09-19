@@ -2,7 +2,7 @@
 
 Chess Coach ingests public Chess.com games, analyzes a bounded set with Stockfish, builds a
 reviewable weakness profile, turns the player's own mistakes into Leitner drills, and exposes
-live data to an Anthropic tool-use coaching loop.
+live data to an OpenAI Responses API tool-use coaching loop.
 
 > **Status:** early implementation. Demo games and GM seed profiles are explicitly illustrative;
 > they are not
@@ -16,11 +16,13 @@ live data to an Anthropic tool-use coaching loop.
 - Stockfish through `python-chess`, with engine/settings-aware FEN caching
 - Database-backed ingest deduplication and per-game failure isolation
 - Leitner practice cards generated from the player's own blunder positions
-- Anthropic client tools scoped to the requested player
+- OpenAI Responses API tools scoped to the requested player, with optional Anthropic fallback
 
 ## Local development
 
-Prerequisites: Python 3.11+, Node 20.19+, Stockfish, and an Anthropic API key for the coach.
+Prerequisites: Python 3.11+, Node 20.19+, Stockfish, and an OpenAI Platform API key for the coach.
+Codex/ChatGPT subscription usage is separate from API-key billing; a deployed backend needs
+an API key from a funded OpenAI Platform project. Never place that key in the frontend.
 
 ```bash
 brew install stockfish
@@ -49,14 +51,16 @@ not represented as a real person's Chess.com history.
 ## Tests
 
 ```bash
-cd backend && python -m pytest tests -v && ruff check .  # 123 tests
+cd backend && python -m pytest tests -v && ruff check .  # 126 tests
 cd frontend && npm test && npm run lint && npm run typecheck && npm run build  # 17 tests
 ```
 
 ## Deployment
 
 Import the repository into Render as a **Blueprint** so the root `render.yaml` is applied.
-Configure `DATABASE_URL`, `ANTHROPIC_API_KEY`, `CORS_ORIGINS`, and `TRACKED_USERNAMES`.
+Configure `DATABASE_URL`, `OPENAI_API_KEY`, `CORS_ORIGINS`, and `TRACKED_USERNAMES`.
+The default coach model is `gpt-5.3-codex`; set `AI_PROVIDER=anthropic` and the existing
+`ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL` variables to use the fallback provider.
 Production startup rejects ephemeral SQLite unless it is explicitly allowed for a disposable
 demo.
 

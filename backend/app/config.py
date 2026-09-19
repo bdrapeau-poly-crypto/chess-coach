@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     app_name: str = "Chess Coach API"
     environment: str = "development"
     database_url: str = "sqlite:///./chess_coach.db"
+    ai_provider: str = "openai"
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-5.3-codex"
+    openai_reasoning_effort: str = "medium"
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-sonnet-5"
     stockfish_path: str | None = None
