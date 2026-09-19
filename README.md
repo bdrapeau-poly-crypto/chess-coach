@@ -89,6 +89,20 @@ the API, exchanges the access key for a short-lived session, queues each ingest,
 terminal status. It processes at most five users per run and fails visibly on job failure or
 timeout. `workflow_dispatch` accepts an optional username list for a bounded manual refresh.
 
+### Production monitoring and restore drills
+
+`.github/workflows/production-monitor.yml` checks the frontend, API, Stockfish probe, deployed
+Git commit, authentication, and one-day telemetry every hour. Three ingest failures in one day
+fail the monitor by default. A failed monitor opens a deduplicated GitHub issue. Set
+`COACH_DAILY_TOKEN_ALERT` to a nonzero repository-variable threshold to add a coarse token-volume
+guard; use Anthropic Console's workspace spend notification for an authoritative dollar alert.
+
+`.github/workflows/neon-restore-drill.yml` runs weekly. It creates a short-lived point-in-time
+restore branch from `production` at five minutes before the run, validates the expected schema,
+Alembic head, and restored user data, then deletes the drill branch. The branch also expires after
+two hours if cleanup is interrupted. The workflow uses a project-scoped
+`NEON_PROJECT_API_KEY`; it does not reuse the account-wide MCP credential.
+
 ## API
 
 - `POST /ingest/{username}` and `GET /ingest/jobs/{job_id}`

@@ -1,0 +1,40 @@
+name: Production Monitor
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: production-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      API_URL: ${{ vars.CHESS_COACH_API_URL || 'https://chess-coach-api-um80.onrender.com' }}
+      FRONTEND_URL: ${{ vars.CHESS_COACH_FRONTEND_URL || 'https://frontend-taupe-omega-75.vercel.app' }}
+      ACCESS_KEY: ${{ secrets.CHESS_COACH_ACCESS_KEY }}
+      EXPECTED_COMMIT: ${{ github.sha }}
+      FAILED_INGEST_THRESHOLD: ${{ vars.FAILED_INGEST_THRESHOLD || '3' }}
+      COACH_DAILY_TOKEN_ALERT: ${{ vars.COACH_DAILY_TOKEN_ALERT || '0' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check production
+        run: bash scripts/monitor_production.sh
+      - name: Open production alert
+        if: failure()
+        run: |
+          existing="$(gh issue list --state open --search 'Production monitoring alert in:title' --json number --jq '.[0].number // empty')"
+          if [[ -z "$existing" ]]; then
+            gh issue create \
+              --title "Production monitoring alert" \
+              --body "The production monitor failed. Review: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          fi

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import secrets
 from datetime import UTC, datetime, timedelta
 from time import perf_counter
@@ -61,7 +62,10 @@ def require_user(session: Session, username: str):
 
 @router.get("/health")
 def health() -> dict:
-    return {"status": "ok"}
+    result = {"status": "ok"}
+    if commit := os.getenv("RENDER_GIT_COMMIT"):
+        result["commit"] = commit
+    return result
 
 
 @router.get("/health/stockfish")
