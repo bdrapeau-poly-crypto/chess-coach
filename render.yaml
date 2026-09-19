@@ -13,11 +13,11 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: AI_PROVIDER
-        value: openai
-      - key: OPENAI_API_KEY
+        value: anthropic
+      - key: ANTHROPIC_API_KEY
         sync: false
-      - key: OPENAI_MODEL
-        value: gpt-5.3-codex
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-5
       - key: CORS_ORIGINS
         sync: false
       - key: SEED_DEMO_DATA

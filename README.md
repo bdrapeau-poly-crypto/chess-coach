@@ -58,9 +58,10 @@ cd frontend && npm test && npm run lint && npm run typecheck && npm run build  #
 ## Deployment
 
 Import the repository into Render as a **Blueprint** so the root `render.yaml` is applied.
-Configure `DATABASE_URL`, `OPENAI_API_KEY`, `CORS_ORIGINS`, and `TRACKED_USERNAMES`.
-The default coach model is `gpt-5.3-codex`; set `AI_PROVIDER=anthropic` and the existing
-`ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL` variables to use the fallback provider.
+Configure `DATABASE_URL`, `ANTHROPIC_API_KEY`, `CORS_ORIGINS`, and `TRACKED_USERNAMES`.
+The Render Blueprint selects Anthropic because that is the currently provisioned production
+provider. OpenAI remains supported: set `AI_PROVIDER=openai`, `OPENAI_API_KEY`, and
+`OPENAI_MODEL` to switch providers later.
 Production startup rejects ephemeral SQLite unless it is explicitly allowed for a disposable
 demo.
 
