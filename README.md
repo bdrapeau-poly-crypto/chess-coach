@@ -58,12 +58,12 @@ cd frontend && npm test && npm run lint && npm run typecheck && npm run build  #
 ## Deployment
 
 Import the repository into Render as a **Blueprint** so the root `render.yaml` is applied.
-Configure `DATABASE_URL`, `ANTHROPIC_API_KEY`, `CORS_ORIGINS`, and `TRACKED_USERNAMES`.
-The Render Blueprint selects Anthropic because that is the currently provisioned production
-provider. OpenAI remains supported: set `AI_PROVIDER=openai`, `OPENAI_API_KEY`, and
-`OPENAI_MODEL` to switch providers later.
-Production startup rejects ephemeral SQLite unless it is explicitly allowed for a disposable
-demo.
+The included Blueprint is a disposable free-tier demo: it selects Anthropic, requires
+`ANTHROPIC_API_KEY` and `CORS_ORIGINS`, and explicitly permits temporary SQLite storage. Data
+can reset whenever the free service sleeps, restarts, or redeploys, and the nightly refresh is
+disabled. For durable production use, configure external Postgres through `DATABASE_URL`,
+disable `ALLOW_EPHEMERAL_DATABASE`, and add a scheduled refresh service. OpenAI remains
+supported as an optional coach provider.
 
 Import `frontend/` into Vercel and set `VITE_API_URL` to the Render API URL. Vercel creates
 preview deployments for pull requests when Git integration is enabled.

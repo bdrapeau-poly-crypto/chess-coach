@@ -2,7 +2,7 @@ services:
   - type: web
     name: chess-coach-api
     runtime: docker
-    plan: 0.5c-512mb
+    plan: free
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /health
@@ -11,7 +11,9 @@ services:
       - key: ENVIRONMENT
         value: production
       - key: DATABASE_URL
-        sync: false
+        value: sqlite:////tmp/chess_coach.db
+      - key: ALLOW_EPHEMERAL_DATABASE
+        value: "true"
       - key: AI_PROVIDER
         value: anthropic
       - key: ANTHROPIC_API_KEY
@@ -22,26 +24,6 @@ services:
         sync: false
       - key: SEED_DEMO_DATA
         value: "true"
-      - key: STOCKFISH_DEPTH
-        value: "12"
-      - key: STOCKFISH_HASH_MB
-        value: "64"
-
-  - type: cron
-    name: chess-coach-nightly-refresh
-    runtime: docker
-    plan: 0.5c-512mb
-    schedule: "0 3 * * *"
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    dockerCommand: python -m app.jobs.nightly
-    envVars:
-      - key: ENVIRONMENT
-        value: production
-      - key: DATABASE_URL
-        sync: false
-      - key: TRACKED_USERNAMES
-        sync: false
       - key: STOCKFISH_DEPTH
         value: "12"
       - key: STOCKFISH_HASH_MB
