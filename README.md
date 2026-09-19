@@ -79,6 +79,16 @@ Blueprint Auto Sync off and manually sync infrastructure changes after reviewing
 Import `frontend/` into Vercel and set `VITE_API_URL` to the Render API URL. Vercel creates
 preview deployments for pull requests when Git integration is enabled.
 
+### Nightly refresh
+
+The production refresh runs from `.github/workflows/nightly-refresh.yml` at 07:17 UTC, rather
+than from the sleeping free Render web process. Configure the GitHub Actions secret
+`CHESS_COACH_ACCESS_KEY` with the same value as Render's `APP_ACCESS_KEY`, and set the repository
+variable `TRACKED_USERNAMES` to a comma-separated list of Chess.com usernames. The workflow wakes
+the API, exchanges the access key for a short-lived session, queues each ingest, and polls it to a
+terminal status. It processes at most five users per run and fails visibly on job failure or
+timeout. `workflow_dispatch` accepts an optional username list for a bounded manual refresh.
+
 ## API
 
 - `POST /ingest/{username}` and `GET /ingest/jobs/{job_id}`

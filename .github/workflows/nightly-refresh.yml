@@ -1,0 +1,33 @@
+name: Nightly Chess Refresh
+
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+    inputs:
+      usernames:
+        description: "Optional comma-separated usernames; defaults to TRACKED_USERNAMES"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-chess-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      API_URL: ${{ vars.CHESS_COACH_API_URL || 'https://chess-coach-api-um80.onrender.com' }}
+      ACCESS_KEY: ${{ secrets.CHESS_COACH_ACCESS_KEY }}
+      TRACKED_USERNAMES: ${{ inputs.usernames || vars.TRACKED_USERNAMES }}
+      MAX_TRACKED_USERS: "5"
+      JOB_TIMEOUT_SECONDS: "5400"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refresh tracked Chess.com users
+        run: bash scripts/nightly_refresh.sh
