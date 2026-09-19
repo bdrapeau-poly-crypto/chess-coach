@@ -13,11 +13,6 @@ if [[ -z "$ACCESS_KEY" ]]; then
   exit 2
 fi
 
-if [[ -z "$TRACKED_USERNAMES" ]]; then
-  echo "TRACKED_USERNAMES is required (comma-separated Chess.com usernames)" >&2
-  exit 2
-fi
-
 if ! [[ "$MAX_TRACKED_USERS" =~ ^[1-9][0-9]*$ ]]; then
   echo "MAX_TRACKED_USERS must be a positive integer" >&2
   exit 2
@@ -63,6 +58,14 @@ jq -n --arg access_key "$ACCESS_KEY" '{access_key: $access_key}' \
 
 session_token="$(jq -er '.token | select(type == "string" and length > 0)' "$work_dir/session.json")"
 
+if [[ -z "$TRACKED_USERNAMES" ]]; then
+  curl "${curl_common[@]}" \
+    --header "Authorization: Bearer $session_token" \
+    "$API_URL/users/tracked" \
+    --output "$work_dir/tracked-users.json"
+  TRACKED_USERNAMES="$(jq -er '.usernames | join(",")' "$work_dir/tracked-users.json")"
+fi
+
 usernames=()
 while IFS= read -r username; do
   usernames+=("$username")
@@ -72,7 +75,7 @@ done < <(
 )
 
 if (( ${#usernames[@]} == 0 )); then
-  echo "TRACKED_USERNAMES did not contain a usable username" >&2
+  echo "No tracked Chess.com usernames are available; complete one successful ingest first" >&2
   exit 2
 fi
 

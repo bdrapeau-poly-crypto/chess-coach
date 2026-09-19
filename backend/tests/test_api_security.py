@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from app.api.routes import router
 from app.config import Settings, get_settings
 from app.database import get_session
-from app.models import DrillAttempt, UsageEvent
+from app.models import DrillAttempt, UsageEvent, User
 from app.seed import seed_demo_data
 
 
@@ -81,3 +81,26 @@ def test_metrics_summary_requires_authentication(session):
     )
     assert response.status_code == 200
     assert response.json()["events"][0]["input_tokens"] == 10
+
+
+def test_tracked_users_requires_authentication_and_excludes_demo(session):
+    session.add_all(
+        [
+            User(username="real-player", display_name="Real", is_tracked=True),
+            User(username="not-tracked", display_name="Other", is_tracked=False),
+            User(username="demo", display_name="Demo", is_demo=True, is_tracked=True),
+        ]
+    )
+    session.commit()
+    client = secured_client(session)
+
+    assert client.get("/users/tracked").status_code == 401
+    token = client.post(
+        "/auth/session", json={"access_key": "private-beta-access"}
+    ).json()["token"]
+    response = client.get(
+        "/users/tracked", headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"usernames": ["real-player"]}

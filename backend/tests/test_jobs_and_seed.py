@@ -1,6 +1,6 @@
 from sqlalchemy import func, select
 
-from app.jobs.ingest import create_ingest_job, refresh_user_outputs
+from app.jobs.ingest import _get_or_create_user, create_ingest_job, refresh_user_outputs
 from app.models import BlunderPosition, DrillCard, Game, JobStatus, StyleProfile, User
 from app.seed import GM_PROFILES, seed_demo_data
 
@@ -20,6 +20,17 @@ def test_completed_job_allows_new_ingest(session):
     second, created = create_ingest_job(session, "exampleuser")
     assert created is True
     assert second.id != first.id
+
+
+def test_ingested_users_are_tracked_but_demo_stays_untracked(session):
+    player = _get_or_create_user(session, "exampleuser")
+    demo = User(username="demo", display_name="Demo", is_demo=True)
+    session.add(demo)
+    session.flush()
+    _get_or_create_user(session, "demo")
+
+    assert player.is_tracked is True
+    assert demo.is_tracked is False
 
 
 def test_seed_is_idempotent(session):

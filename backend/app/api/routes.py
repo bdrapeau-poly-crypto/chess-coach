@@ -22,6 +22,7 @@ from app.models import (
     IngestJob,
     StyleProfile,
     UsageEvent,
+    User,
     WeaknessProfile,
 )
 from app.practice.leitner import mastery, queue_from_blunders, record_attempt
@@ -161,6 +162,21 @@ def ingest_status(
         "games_failed": job.games_failed,
         "error": job.error,
     }
+
+
+@router.get("/users/tracked")
+def tracked_users(
+    request: Request,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    require_authenticated(request, settings)
+    usernames = session.scalars(
+        select(User.username)
+        .where(User.is_tracked.is_(True), User.is_demo.is_(False))
+        .order_by(User.username)
+    ).all()
+    return {"usernames": list(usernames)}
 
 
 @router.get("/profile/{username}")

@@ -83,9 +83,11 @@ def create_ingest_job(session: Session, username: str) -> tuple[IngestJob, bool]
 def _get_or_create_user(session: Session, username: str) -> User:
     user = session.scalar(select(User).where(User.username == username))
     if user is None:
-        user = User(username=username, display_name=username)
+        user = User(username=username, display_name=username, is_tracked=True)
         session.add(user)
         session.flush()
+    elif not user.is_demo:
+        user.is_tracked = True
     return user
 
 

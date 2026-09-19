@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       usernames:
-        description: "Optional comma-separated usernames; defaults to TRACKED_USERNAMES"
+        description: "Optional comma-separated override; defaults to users tracked by the app"
         required: false
         type: string
 
@@ -24,7 +24,7 @@ jobs:
     env:
       API_URL: ${{ vars.CHESS_COACH_API_URL || 'https://chess-coach-api-um80.onrender.com' }}
       ACCESS_KEY: ${{ secrets.CHESS_COACH_ACCESS_KEY }}
-      TRACKED_USERNAMES: ${{ inputs.usernames || vars.TRACKED_USERNAMES }}
+      TRACKED_USERNAMES: ${{ inputs.usernames }}
       MAX_TRACKED_USERS: "5"
       JOB_TIMEOUT_SECONDS: "5400"
     steps:

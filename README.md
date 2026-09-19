@@ -83,11 +83,11 @@ preview deployments for pull requests when Git integration is enabled.
 
 The production refresh runs from `.github/workflows/nightly-refresh.yml` at 07:17 UTC, rather
 than from the sleeping free Render web process. Configure the GitHub Actions secret
-`CHESS_COACH_ACCESS_KEY` with the same value as Render's `APP_ACCESS_KEY`, and set the repository
-variable `TRACKED_USERNAMES` to a comma-separated list of Chess.com usernames. The workflow wakes
-the API, exchanges the access key for a short-lived session, queues each ingest, and polls it to a
-terminal status. It processes at most five users per run and fails visibly on job failure or
-timeout. `workflow_dispatch` accepts an optional username list for a bounded manual refresh.
+`CHESS_COACH_ACCESS_KEY` with the same value as Render's `APP_ACCESS_KEY`. The workflow wakes the
+API, exchanges the access key for a short-lived session, loads the exact non-demo Chess.com
+usernames previously submitted for ingestion, queues each refresh, and polls it to a terminal
+status. It processes at most five users per run and fails visibly on job failure or timeout.
+`workflow_dispatch` accepts an optional username list for a bounded manual override.
 
 ### Production monitoring and restore drills
 
