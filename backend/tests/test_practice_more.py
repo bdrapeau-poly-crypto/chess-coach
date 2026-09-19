@@ -2,8 +2,10 @@ from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import func, select
+from starlette.requests import Request
 
 from app.api.routes import drill_attempt
+from app.config import Settings
 from app.models import BlunderPosition, DrillCard, Game, User
 from app.practice.leitner import BOX_INTERVALS, mastery, queue_from_blunders, record_attempt
 from app.schemas import DrillAttemptRequest
@@ -103,7 +105,9 @@ def test_attempt_response_reveals_correct_move_after_grading(session):
     result = drill_attempt(
         "practice",
         DrillAttemptRequest(card_id=card.id, attempted_move_uci="e2e3"),
+        Request({"type": "http", "headers": [], "client": ("test", 123)}),
         session,
+        Settings(_env_file=None),
     )
 
     assert result["correct"] is False

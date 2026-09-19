@@ -24,6 +24,17 @@ class CoachResponse(BaseModel):
     answer: str
 
 
+class SessionRequest(BaseModel):
+    access_key: str = Field(min_length=1, max_length=512)
+
+
+class SessionResponse(BaseModel):
+    authenticated: bool
+    auth_required: bool
+    token: str | None = None
+    expires_at: datetime | None = None
+
+
 class JobResponse(BaseModel):
     job_id: int
     username: str

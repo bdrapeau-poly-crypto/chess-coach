@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
+from time import perf_counter
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -17,6 +18,7 @@ from app.ingestion.pgn import normalize_username, parse_game
 from app.models import ArchiveCache, Game, IngestJob, JobStatus, User
 from app.practice.leitner import queue_from_blunders
 from app.profiling.profiles import refresh_style_profile, refresh_weakness_profile
+from app.telemetry import record_usage_event
 
 logger = logging.getLogger(__name__)
 LEASE_DURATION = timedelta(hours=6)
@@ -125,6 +127,7 @@ async def _fetch_games(session: Session, username: str, cap: int) -> list[dict]:
 
 async def run_ingest_job(job_id: int) -> None:
     settings = get_settings()
+    timer_started = perf_counter()
     with SessionLocal() as session:
         started_at = datetime.now(UTC)
         claimed = session.execute(
@@ -142,6 +145,8 @@ async def run_ingest_job(job_id: int) -> None:
         job = session.get(IngestJob, job_id)
         if job is None:
             return
+        cache_hits = 0
+        cache_misses = 0
         try:
             payloads = await _fetch_games(session, job.username, settings.max_games_per_ingest)
             job.games_fetched = len(payloads)
@@ -197,6 +202,8 @@ async def run_ingest_job(job_id: int) -> None:
                         logger.warning(
                             "Game failed during ingest job %s: %s", job_id, type(exc).__name__
                         )
+                cache_hits = analyzer.cache_hits
+                cache_misses = analyzer.cache_misses
 
             refresh_user_outputs(session, user.id)
             job = session.get(IngestJob, job_id)
@@ -204,6 +211,21 @@ async def run_ingest_job(job_id: int) -> None:
                 job.status = JobStatus.COMPLETED
                 job.completed_at = datetime.now(UTC)
                 job.lease_expires_at = None
+                record_usage_event(
+                    session,
+                    event_type="ingest",
+                    status="completed",
+                    duration_ms=int((perf_counter() - timer_started) * 1000),
+                    username=job.username,
+                    details={
+                        "job_id": job.id,
+                        "games_fetched": job.games_fetched,
+                        "games_analyzed": job.games_analyzed,
+                        "games_failed": job.games_failed,
+                        "engine_cache_hits": cache_hits,
+                        "engine_cache_misses": cache_misses,
+                    },
+                )
             session.commit()
         except Exception as exc:
             session.rollback()
@@ -213,6 +235,22 @@ async def run_ingest_job(job_id: int) -> None:
                 job.completed_at = datetime.now(UTC)
                 job.lease_expires_at = None
                 job.error = f"{type(exc).__name__}: {exc}"[:1000]
+                record_usage_event(
+                    session,
+                    event_type="ingest",
+                    status="failed",
+                    duration_ms=int((perf_counter() - timer_started) * 1000),
+                    username=job.username,
+                    error_type=type(exc).__name__,
+                    details={
+                        "job_id": job.id,
+                        "games_fetched": job.games_fetched,
+                        "games_analyzed": job.games_analyzed,
+                        "games_failed": job.games_failed,
+                        "engine_cache_hits": cache_hits,
+                        "engine_cache_misses": cache_misses,
+                    },
+                )
                 session.commit()
             logger.exception("Ingest job %s failed", job_id)
 

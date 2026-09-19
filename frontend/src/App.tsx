@@ -1,6 +1,10 @@
-import { FormEvent, lazy, Suspense, useState } from "react";
+import { FormEvent, lazy, Suspense, useEffect, useState } from "react";
 import {
+  ApiError,
+  authenticate,
   askCoach,
+  clearSession,
+  getAuthSession,
   getBlunders,
   getDrills,
   getOpenings,
@@ -17,6 +21,7 @@ import type {
   IngestJob,
   OpeningStat,
   Profile,
+  AuthSession,
   StyleGap,
   StyleMatch,
 } from "./types";
@@ -39,6 +44,21 @@ const WeaknessChart = lazy(() =>
 );
 
 type Tab = "profile" | "style" | "openings" | "blunders" | "practice" | "coach";
+const PENDING_JOB_KEY = "chess-coach-pending-job";
+
+interface PendingJob {
+  jobId: number;
+  username: string;
+}
+
+function storedPendingJob(): PendingJob | null {
+  try {
+    const value = window.localStorage.getItem(PENDING_JOB_KEY);
+    return value ? (JSON.parse(value) as PendingJob) : null;
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
   const [username, setUsername] = useState("");
@@ -55,10 +75,47 @@ export default function App() {
   const [coachInput, setCoachInput] = useState("");
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
+  const [serviceMessage, setServiceMessage] = useState("");
+  const [auth, setAuth] = useState<AuthSession | null>(null);
+  const [accessKey, setAccessKey] = useState("");
+  const [pendingJob, setPendingJob] = useState<PendingJob | null>(storedPendingJob);
+
+  useEffect(() => {
+    void getAuthSession()
+      .then((session) => {
+        if (!session.authenticated) clearSession();
+        setAuth(session);
+      })
+      .catch(() => setAuth({ authenticated: false, auth_required: true }));
+  }, []);
+
+  function beginColdStartNotice(initial: string): () => void {
+    setServiceMessage(initial);
+    const timer = globalThis.setTimeout(
+      () => setServiceMessage("The free analysis service may take about a minute to wake up…"),
+      3_000,
+    );
+    return () => {
+      globalThis.clearTimeout(timer);
+      setServiceMessage("");
+    };
+  }
+
+  function handleError(caught: unknown, fallback: string) {
+    if (caught instanceof ApiError && caught.status === 401) {
+      clearSession();
+      setAuth((current) => ({
+        authenticated: false,
+        auth_required: current?.auth_required ?? true,
+      }));
+    }
+    setError(caught instanceof Error ? caught.message : fallback);
+  }
 
   async function loadWorkspace(name: string) {
     setBusy(true);
     setError("");
+    const endNotice = beginColdStartNotice("Connecting to the analysis service…");
     try {
       const [nextProfile, matches, gap, openingRows, positions, cards] = await Promise.all([
         getProfile(name),
@@ -77,27 +134,89 @@ export default function App() {
       setActiveUser(name);
       setHistory([]);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load player workspace");
+      handleError(caught, "Could not load player workspace");
     } finally {
+      endNotice();
       setBusy(false);
     }
+  }
+
+  async function signIn(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    const endNotice = beginColdStartNotice("Connecting securely…");
+    try {
+      const nextAuth = await authenticate(accessKey);
+      setAuth(nextAuth);
+      setAccessKey("");
+    } catch (caught) {
+      handleError(caught, "Could not verify access");
+    } finally {
+      endNotice();
+      setBusy(false);
+    }
+  }
+
+  function signOut() {
+    clearSession();
+    setAuth({ authenticated: false, auth_required: auth?.auth_required ?? true });
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     const name = username.trim().toLowerCase();
     if (!name) return;
+    if (auth?.auth_required && !auth.authenticated) {
+      setError("Enter the private beta access key before analyzing games.");
+      return;
+    }
     setBusy(true);
     setError("");
+    const endNotice = beginColdStartNotice("Starting the analysis service…");
     try {
       const created = await ingest(name);
       setJob(created);
+      const nextPending = { jobId: created.job_id, username: name };
+      window.localStorage.setItem(PENDING_JOB_KEY, JSON.stringify(nextPending));
+      setPendingJob(nextPending);
       const finished = await pollJob(created.job_id, setJob);
       if (finished.status === "failed") throw new Error(finished.error || "Ingest failed");
+      window.localStorage.removeItem(PENDING_JOB_KEY);
+      setPendingJob(null);
       await loadWorkspace(name);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Ingest failed");
+      handleError(caught, "Ingest failed");
     } finally {
+      endNotice();
+      setBusy(false);
+    }
+  }
+
+  async function resumeAnalysis() {
+    if (!pendingJob) return;
+    if (auth?.auth_required && !auth.authenticated) {
+      setError("Enter the private beta access key before resuming analysis.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    const endNotice = beginColdStartNotice("Resuming the saved analysis job…");
+    try {
+      const finished = await pollJob(pendingJob.jobId, setJob);
+      if (finished.status === "failed") throw new Error(finished.error || "Ingest failed");
+      window.localStorage.removeItem(PENDING_JOB_KEY);
+      const completedUsername = pendingJob.username;
+      setPendingJob(null);
+      await loadWorkspace(completedUsername);
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 404) {
+        window.localStorage.removeItem(PENDING_JOB_KEY);
+        setPendingJob(null);
+      }
+      handleError(caught, "Could not resume analysis");
+    } finally {
+      endNotice();
       setBusy(false);
     }
   }
@@ -106,6 +225,10 @@ export default function App() {
     event.preventDefault();
     const question = coachInput.trim();
     if (!question || !activeUser) return;
+    if (auth?.auth_required && !auth.authenticated) {
+      setError("Enter the private beta access key before using the AI coach.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -117,7 +240,7 @@ export default function App() {
       ]);
       setCoachInput("");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Coach request failed");
+      handleError(caught, "Coach request failed");
     } finally {
       setBusy(false);
     }
@@ -144,7 +267,12 @@ export default function App() {
             placeholder="Chess.com username"
             autoComplete="off"
           />
-          <button disabled={busy} type="submit">Analyze my games</button>
+          <button
+            disabled={busy || Boolean(auth?.auth_required && !auth.authenticated)}
+            type="submit"
+          >
+            Analyze my games
+          </button>
           <button
             disabled={busy}
             type="button"
@@ -154,6 +282,37 @@ export default function App() {
             Try demo
           </button>
         </form>
+        {auth?.auth_required && (
+          auth.authenticated ? (
+            <div className="auth-status">
+              <span>Private beta access active</span>
+              <button className="text-button" type="button" onClick={signOut}>Sign out</button>
+            </div>
+          ) : (
+            <form className="auth-form" onSubmit={signIn}>
+              <label htmlFor="access-key">Private beta access key</label>
+              <input
+                id="access-key"
+                type="password"
+                value={accessKey}
+                onChange={(event) => setAccessKey(event.target.value)}
+                autoComplete="current-password"
+              />
+              <button disabled={busy || !accessKey} type="submit">Unlock</button>
+            </form>
+          )
+        )}
+        {pendingJob && (
+          <button
+            className="resume-button"
+            disabled={busy || Boolean(auth?.auth_required && !auth.authenticated)}
+            type="button"
+            onClick={() => void resumeAnalysis()}
+          >
+            Resume analysis for {pendingJob.username}
+          </button>
+        )}
+        {serviceMessage && <p className="status" role="status">{serviceMessage}</p>}
         {job && (
           <p className="status">
             Job {job.job_id}: {job.status} · {job.games_analyzed ?? 0} analyzed
@@ -209,14 +368,17 @@ export default function App() {
             {tab === "style" && (
               <article className="panel split-panel">
                 <div>
-                  <p className="eyebrow">Closest reference</p>
+                  <p className="eyebrow">Closest illustrative reference</p>
                   <h3>{styleMatches[0]?.gm_name ?? "No match available"}</h3>
                   <p>
                     {styleMatches[0]
                       ? `${styleMatches[0].similarity}% vector similarity`
                       : "Analyze games to calculate a style vector."}
                   </p>
-                  <small>Current seed profiles are illustrative, not an all-GM corpus.</small>
+                  <small>
+                    Compared with five illustrative seeded grandmaster references—not an
+                    all-grandmaster corpus or a statistically validated playing-style model.
+                  </small>
                 </div>
                 <div className="radar">{styleGap && <StyleRadar gap={styleGap} />}</div>
               </article>
@@ -276,7 +438,12 @@ export default function App() {
                     placeholder="What should I work on next?"
                     rows={3}
                   />
-                  <button disabled={busy} type="submit">Ask coach</button>
+                  <button
+                    disabled={busy || Boolean(auth?.auth_required && !auth.authenticated)}
+                    type="submit"
+                  >
+                    Ask coach
+                  </button>
                 </form>
               </article>
             )}

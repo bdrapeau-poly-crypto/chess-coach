@@ -6,13 +6,21 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /health
-    autoDeployTrigger: commit
+    autoDeployTrigger: checksPass
     envVars:
       - key: ENVIRONMENT
         value: production
       - key: DATABASE_URL
-        value: sqlite:////tmp/chess_coach.db
+        sync: false
       - key: ALLOW_EPHEMERAL_DATABASE
+        value: "false"
+      - key: AUTH_REQUIRED
+        value: "true"
+      - key: APP_ACCESS_KEY
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: TRUST_PROXY_HEADERS
         value: "true"
       - key: AI_PROVIDER
         value: anthropic

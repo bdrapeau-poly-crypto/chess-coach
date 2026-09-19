@@ -2,7 +2,7 @@
 
 Chess Coach ingests public Chess.com games, analyzes a bounded set with Stockfish, builds a
 reviewable weakness profile, turns the player's own mistakes into Leitner drills, and exposes
-live data to an OpenAI Responses API tool-use coaching loop.
+live data to an Anthropic or OpenAI tool-use coaching loop.
 
 > **Status:** early implementation. Demo games and GM seed profiles are explicitly illustrative;
 > they are not
@@ -12,17 +12,18 @@ live data to an OpenAI Responses API tool-use coaching loop.
 ## Architecture
 
 - React 18, Vite, Chart.js, `react-chessboard`, and `react-markdown`
-- FastAPI, SQLAlchemy, SQLite locally, and Postgres through `DATABASE_URL`
+- FastAPI, SQLAlchemy, SQLite locally, Postgres through `DATABASE_URL`, and Alembic migrations
 - Stockfish through `python-chess`, with engine/settings-aware FEN caching
 - Database-backed ingest deduplication and per-game failure isolation
 - Leitner practice cards generated from the player's own blunder positions
-- OpenAI Responses API tools scoped to the requested player, with optional Anthropic fallback
+- Claude or OpenAI tools scoped to the requested player
+- Signed private-beta sessions, database-backed request limits, and usage instrumentation
 
 ## Local development
 
-Prerequisites: Python 3.11+, Node 20.19+, Stockfish, and an OpenAI Platform API key for the coach.
-Codex/ChatGPT subscription usage is separate from API-key billing; a deployed backend needs
-an API key from a funded OpenAI Platform project. Never place that key in the frontend.
+Prerequisites: Python 3.11+, Node 20.19+, Stockfish, and an Anthropic or OpenAI API key for the
+coach. Codex/ChatGPT subscriptions are separate from API billing. Never place an AI provider
+key, `APP_ACCESS_KEY`, or `SESSION_SECRET` in the frontend.
 
 ```bash
 brew install stockfish
@@ -32,6 +33,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
 cp .env.example .env
+alembic upgrade head
 uvicorn main:app --reload --port 8000
 ```
 
@@ -46,25 +48,33 @@ npm run dev
 
 Open <http://localhost:5173>. The demo user and illustrative GM profiles are seeded
 idempotently on first startup. Its four games are labeled local illustrative fixtures; they are
-not represented as a real person's Chess.com history.
+not represented as a real person's Chess.com history. Set `AUTH_REQUIRED=true`, a private
+`APP_ACCESS_KEY` of at least 16 characters, and a random `SESSION_SECRET` of at least 32
+characters to exercise private-beta authentication locally.
 
 ## Tests
 
 ```bash
-cd backend && python -m pytest tests -v && ruff check .  # 129 tests
-cd frontend && npm test && npm run lint && npm run typecheck && npm run build  # 24 tests
+cd backend && python -m pytest tests -v && ruff check .
+cd frontend && npm test && npm run lint && npm run typecheck && npm run build
 ```
 
 ## Deployment
 
-Import the repository into Render as a **Blueprint** so the root `render.yaml` is applied.
-The included Blueprint is a disposable free-tier demo: it selects Anthropic, requires
-`ANTHROPIC_API_KEY` and `CORS_ORIGINS`, and explicitly permits temporary SQLite storage. Data
-can reset whenever the free service sleeps, restarts, or redeploys, and the nightly refresh is
-disabled. The coach defaults to Claude Haiku 4.5 for the lowest current Claude API token cost
-that supports this short tool-use workflow. For durable production use, configure external Postgres through `DATABASE_URL`,
-disable `ALLOW_EPHEMERAL_DATABASE`, and add a scheduled refresh service. OpenAI remains
-supported as an optional coach provider.
+Import the repository into Render as a **Blueprint** so the root `render.yaml` is applied. Before
+deploying, configure these secret environment variables on the web service:
+
+- `DATABASE_URL`: a durable PostgreSQL connection URL
+- `ANTHROPIC_API_KEY`: the server-side coach credential
+- `APP_ACCESS_KEY`: the private-beta passphrase entered by authorized users
+- `SESSION_SECRET`: a random signing secret of at least 32 characters
+- `CORS_ORIGINS`: the exact Vercel production origin
+
+The container runs `alembic upgrade head` before starting the API. `ALLOW_EPHEMERAL_DATABASE`
+is false in production, so a missing PostgreSQL URL fails safely instead of silently returning
+to disposable SQLite. The coach defaults to Claude Haiku 4.5; OpenAI remains supported. Render
+deploys only after GitHub checks pass. To avoid two deployments when `render.yaml` changes, keep
+Blueprint Auto Sync off and manually sync infrastructure changes after reviewing them.
 
 Import `frontend/` into Vercel and set `VITE_API_URL` to the Render API URL. Vercel creates
 preview deployments for pull requests when Git integration is enabled.
@@ -78,10 +88,19 @@ preview deployments for pull requests when Git integration is enabled.
 - `GET|POST /drill/{username}/queue`, `POST /drill/{username}/attempt`, and
   `GET /drill/{username}/mastery`
 - `POST /coach`
+- `GET|POST /auth/session` and authenticated `GET /metrics/summary`
 - `GET /health` and `GET /health/stockfish`
 
 ## Data and security boundaries
 
-Chess.com PubAPI data is public and read-only, but drill history and coach conversations are
-application data. Do not expose write endpoints publicly without adding authentication and
-per-user authorization. Secrets remain server-side and must never use a `VITE_` prefix.
+Chess.com PubAPI data is public and read-only, but drill history, operational metrics, and coach
+activity are application data. In private-beta mode, ingestion, coaching, real-player drill
+mutations, job status, and metrics require a short-lived signed bearer token. The long-lived
+access key is exchanged once and is not retained by the frontend. The shared demo drill is
+deliberately stateless. This is access control for a private beta, not individual Chess.com
+account ownership verification; use an identity provider before supporting unrelated users.
+Secrets remain server-side and must never use a `VITE_` prefix.
+
+Usage instrumentation stores request duration, provider/model, token counts, prompt-cache
+read/write counts, tool rounds, ingest totals, and Stockfish cache hit/miss counts. It does not
+store coach prompts or responses. View aggregates through authenticated `GET /metrics/summary`.

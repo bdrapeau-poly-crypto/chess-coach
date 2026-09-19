@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
+  authenticate,
   askCoach,
+  clearSession,
   getBlunders,
   getDrills,
   getOpenings,
@@ -12,7 +14,10 @@ import {
   request,
 } from "./client";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  clearSession();
+  vi.restoreAllMocks();
+});
 
 describe("request", () => {
   it("returns parsed JSON", async () => {
@@ -102,15 +107,36 @@ describe("request", () => {
   });
 
   it("returns drill queue payloads", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify([{ card_id: 2, theme: "pin" }]), { status: 200 }),
+    );
+    await expect(getDrills("player")).resolves.toEqual([{ card_id: 2, theme: "pin" }]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1]).not.toEqual(expect.objectContaining({ method: "POST" }));
+  });
+
+  it("exchanges the access key without retaining it in later requests", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ username: "player", created: 1 }), { status: 200 }),
+        new Response(
+          JSON.stringify({
+            authenticated: true,
+            auth_required: true,
+            token: "signed-session-token",
+          }),
+          { status: 200 },
+        ),
       )
       .mockResolvedValueOnce(
-        new Response(JSON.stringify([{ card_id: 2, theme: "pin" }]), { status: 200 }),
+        new Response(JSON.stringify({ status: "ok" }), { status: 200 }),
       );
-    await expect(getDrills("player")).resolves.toEqual([{ card_id: 2, theme: "pin" }]);
-    expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ method: "POST" }));
+    await authenticate("long-lived-access-key");
+    await request("/health");
+    const loginBody = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    const healthHeaders = fetchMock.mock.calls[1][1]?.headers as Record<string, string>;
+    expect(loginBody).toEqual({ access_key: "long-lived-access-key" });
+    expect(healthHeaders.Authorization).toBe("Bearer signed-session-token");
+    expect(JSON.stringify(healthHeaders)).not.toContain("long-lived-access-key");
   });
 });

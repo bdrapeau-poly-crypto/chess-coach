@@ -23,7 +23,11 @@ jobs:
           cache-dependency-path: backend/requirements-dev.txt
       - run: pip install --requirement requirements-dev.txt
       - run: ruff check .
+      - run: DATABASE_URL=sqlite:////tmp/chess-coach-ci.db alembic upgrade head
+      - run: DATABASE_URL=sqlite:////tmp/chess-coach-ci.db alembic check
       - run: python -m pytest tests --verbose
+      - run: docker build --file backend/Dockerfile backend
+        working-directory: .
 
   frontend:
     runs-on: ubuntu-latest

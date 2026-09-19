@@ -1,5 +1,6 @@
 import type {
   Blunder,
+  AuthSession,
   ChatMessage,
   DrillCard,
   IngestJob,
@@ -20,22 +21,92 @@ export class ApiError extends Error {
   }
 }
 
-export async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
-  if (!response.ok) {
-    let message = `Request failed (${response.status})`;
+const SESSION_KEY = "chess-coach-session";
+let sessionToken = typeof sessionStorage === "undefined" ? null : sessionStorage.getItem(SESSION_KEY);
+
+export function setSessionToken(token: string | null): void {
+  sessionToken = token;
+  if (typeof sessionStorage === "undefined") return;
+  if (token) sessionStorage.setItem(SESSION_KEY, token);
+  else sessionStorage.removeItem(SESSION_KEY);
+}
+
+interface RequestOptions extends RequestInit {
+  timeoutMs?: number;
+  retries?: number;
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, milliseconds));
+}
+
+export async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
+  const { timeoutMs = 90_000, retries, ...fetchInit } = init;
+  const method = (fetchInit.method || "GET").toUpperCase();
+  const retryCount = retries ?? (method === "GET" ? 1 : 0);
+  for (let attempt = 0; attempt <= retryCount; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const payload = (await response.json()) as { detail?: string };
-      message = payload.detail || message;
-    } catch {
-      // Keep the status-based fallback when the server did not return JSON.
+      const response = await fetch(`${API_URL}${path}`, {
+        ...fetchInit,
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+          ...fetchInit.headers,
+        },
+      });
+      if (!response.ok) {
+        if ([502, 503, 504].includes(response.status) && attempt < retryCount) {
+          await wait(1_500 * (attempt + 1));
+          continue;
+        }
+        let message = `Request failed (${response.status})`;
+        try {
+          const payload = (await response.json()) as { detail?: string };
+          message = payload.detail || message;
+        } catch {
+          // Keep the status-based fallback when the server did not return JSON.
+        }
+        throw new ApiError(message, response.status);
+      }
+      return response.json() as Promise<T>;
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      if (attempt < retryCount) {
+        await wait(1_500 * (attempt + 1));
+        continue;
+      }
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new ApiError(
+          "The analysis service is taking longer than expected. Try again in a moment.",
+          0,
+        );
+      }
+      throw new ApiError("Could not reach the analysis service", 0);
+    } finally {
+      globalThis.clearTimeout(timeout);
     }
-    throw new ApiError(message, response.status);
   }
-  return response.json() as Promise<T>;
+  throw new ApiError("Could not reach the analysis service", 0);
+}
+
+export function getAuthSession(): Promise<AuthSession> {
+  return request("/auth/session", { timeoutMs: 90_000 });
+}
+
+export async function authenticate(accessKey: string): Promise<AuthSession> {
+  const result = await request<AuthSession>("/auth/session", {
+    method: "POST",
+    body: JSON.stringify({ access_key: accessKey }),
+  });
+  if (result.token) setSessionToken(result.token);
+  return result;
+}
+
+export function clearSession(): void {
+  setSessionToken(null);
 }
 
 export function ingest(username: string): Promise<IngestJob> {
@@ -78,7 +149,7 @@ export async function getBlunders(username: string): Promise<Blunder[]> {
 
 export function getDrills(username: string): Promise<DrillCard[]> {
   const path = `/drill/${encodeURIComponent(username)}/queue`;
-  return request<{ created: number }>(path, { method: "POST" }).then(() => request(path));
+  return request(path);
 }
 
 export function recordDrillAttempt(
@@ -115,11 +186,16 @@ export async function pollJob(
   jobId: number,
   onUpdate: (job: IngestJob) => void,
   intervalMs = 1500,
+  maxDurationMs = 30 * 60 * 1000,
 ): Promise<IngestJob> {
+  const startedAt = Date.now();
   for (;;) {
     const job = await getJob(jobId);
     onUpdate(job);
     if (["completed", "failed"].includes(job.status)) return job;
+    if (Date.now() - startedAt >= maxDurationMs) {
+      throw new ApiError("Analysis is still running. You can safely return and resume it later.", 0);
+    }
     await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
   }
 }

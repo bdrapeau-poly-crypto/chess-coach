@@ -5,6 +5,7 @@ pydantic-settings>=2.5,<3
 httpx[http2]>=0.27,<1
 python-chess>=1.999,<2
 apscheduler>=3.10,<4
+alembic>=1.14,<2
 anthropic>=0.40,<1
 openai>=2.0,<3
 psycopg[binary]>=3.2,<4

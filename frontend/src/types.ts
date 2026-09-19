@@ -75,3 +75,10 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
 }
+
+export interface AuthSession {
+  authenticated: boolean;
+  auth_required: boolean;
+  token?: string | null;
+  expires_at?: string | null;
+}

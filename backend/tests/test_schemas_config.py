@@ -2,7 +2,12 @@ import pytest
 from pydantic import ValidationError
 
 from app.coach.tools import TOOL_DEFINITIONS
-from app.config import Settings, ensure_durable_database
+from app.config import (
+    Settings,
+    ensure_durable_database,
+    ensure_security_configuration,
+    normalized_database_url,
+)
 from app.schemas import CoachRequest, DrillAttemptRequest, HistoryMessage
 
 
@@ -29,6 +34,44 @@ def test_default_coach_provider_is_openai_codex():
     assert sum("cache_control" in tool for tool in TOOL_DEFINITIONS) == 1
     with pytest.raises(RuntimeError, match="Production SQLite"):
         ensure_durable_database(Settings(_env_file=None, environment="production"))
+
+
+def test_required_auth_rejects_missing_or_short_secrets():
+    with pytest.raises(RuntimeError, match="APP_ACCESS_KEY"):
+        ensure_security_configuration(Settings(_env_file=None, auth_required=True))
+    with pytest.raises(RuntimeError, match="SESSION_SECRET"):
+        ensure_security_configuration(
+            Settings(
+                _env_file=None,
+                auth_required=True,
+                app_access_key="long-enough-access-key",
+                session_secret="short",
+            )
+        )
+
+
+def test_required_auth_accepts_strong_configuration():
+    ensure_security_configuration(
+        Settings(
+            _env_file=None,
+            auth_required=True,
+            app_access_key="long-enough-access-key",
+            session_secret="s" * 32,
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("postgres://u:p@host/db", "postgresql+psycopg://u:p@host/db"),
+        ("postgresql://u:p@host/db", "postgresql+psycopg://u:p@host/db"),
+        ("postgresql+psycopg://u:p@host/db", "postgresql+psycopg://u:p@host/db"),
+        ("sqlite:///local.db", "sqlite:///local.db"),
+    ],
+)
+def test_database_url_selects_the_installed_postgres_driver(source, expected):
+    assert normalized_database_url(source) == expected
 
 
 def test_coach_history_is_bounded():

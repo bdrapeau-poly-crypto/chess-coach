@@ -45,7 +45,7 @@ def test_openai_loop_executes_tools_and_returns_text(session, monkeypatch):
         lambda **kwargs: SimpleNamespace(responses=fake_responses),
     )
 
-    answer = run_coach_loop(
+    result = run_coach_loop(
         session,
         Settings(_env_file=None, openai_api_key="test-key"),
         username="player",
@@ -53,7 +53,9 @@ def test_openai_loop_executes_tools_and_returns_text(session, monkeypatch):
         history=[],
     )
 
-    assert answer == "Focus on loose pieces."
+    assert result.answer == "Focus on loose pieces."
+    assert result.provider == "openai"
+    assert result.tool_rounds == 1
     assert fake_responses.calls[0]["model"] == "gpt-5.3-codex"
     assert fake_responses.calls[0]["store"] is False
     assert fake_responses.calls[0]["prompt_cache_key"] == "chess-coach-v1"

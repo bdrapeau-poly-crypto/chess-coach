@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 
 from anthropic import (
     Anthropic,
@@ -30,6 +31,18 @@ Only use FENs returned by tools. Keep the response concise and actionable.
 
 class CoachUnavailable(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class CoachRunResult:
+    answer: str
+    provider: str
+    model: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    tool_rounds: int = 0
 
 
 def _serialize_content(content: list) -> list[dict]:
@@ -62,7 +75,7 @@ def _run_openai_loop(
     *,
     message: str,
     history: list[dict],
-) -> str:
+) -> CoachRunResult:
     if not settings.openai_api_key:
         raise CoachUnavailable("OPENAI_API_KEY is not configured")
 
@@ -71,8 +84,11 @@ def _run_openai_loop(
         {"role": "user", "content": message}
     ]
     tool_definitions = _openai_tools()
+    input_tokens = 0
+    output_tokens = 0
+    cached_tokens = 0
 
-    for _ in range(settings.coach_max_tool_rounds):
+    for round_index in range(settings.coach_max_tool_rounds):
         response = client.responses.create(
             model=settings.openai_model,
             reasoning={"effort": settings.openai_reasoning_effort},
@@ -83,11 +99,24 @@ def _run_openai_loop(
             prompt_cache_key="chess-coach-v1",
             store=False,
         )
+        usage = getattr(response, "usage", None)
+        input_tokens += int(getattr(usage, "input_tokens", 0) or 0)
+        output_tokens += int(getattr(usage, "output_tokens", 0) or 0)
+        input_details = getattr(usage, "input_tokens_details", None)
+        cached_tokens += int(getattr(input_details, "cached_tokens", 0) or 0)
         input_items += response.output
         calls = [item for item in response.output if item.type == "function_call"]
         if not calls:
             if response.output_text:
-                return response.output_text
+                return CoachRunResult(
+                    answer=response.output_text,
+                    provider="openai",
+                    model=settings.openai_model,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cache_read_tokens=cached_tokens,
+                    tool_rounds=round_index,
+                )
             raise RuntimeError("Coach returned no text or tool calls")
 
         for call in calls:
@@ -112,13 +141,17 @@ def _run_anthropic_loop(
     *,
     message: str,
     history: list[dict],
-) -> str:
+) -> CoachRunResult:
     if not settings.anthropic_api_key:
         raise CoachUnavailable("ANTHROPIC_API_KEY is not configured")
     client = Anthropic(api_key=settings.anthropic_api_key)
     messages = history[-settings.coach_history_limit :] + [{"role": "user", "content": message}]
+    input_tokens = 0
+    output_tokens = 0
+    cache_read_tokens = 0
+    cache_write_tokens = 0
 
-    for _ in range(settings.coach_max_tool_rounds):
+    for round_index in range(settings.coach_max_tool_rounds):
         try:
             response = client.messages.create(
                 model=settings.anthropic_model,
@@ -147,11 +180,27 @@ def _run_anthropic_loop(
             raise CoachUnavailable(
                 f"AI coach provider returned HTTP {exc.status_code}. Try again later."
             ) from exc
+        usage = getattr(response, "usage", None)
+        input_tokens += int(getattr(usage, "input_tokens", 0) or 0)
+        output_tokens += int(getattr(usage, "output_tokens", 0) or 0)
+        cache_read_tokens += int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+        cache_write_tokens += int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
         serialized = _serialize_content(response.content)
         messages.append({"role": "assistant", "content": serialized})
         calls = [block for block in response.content if block.type == "tool_use"]
         if not calls:
-            return "\n".join(block.text for block in response.content if block.type == "text")
+            return CoachRunResult(
+                answer="\n".join(
+                    block.text for block in response.content if block.type == "text"
+                ),
+                provider="anthropic",
+                model=settings.anthropic_model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=cache_write_tokens,
+                tool_rounds=round_index,
+            )
         results = []
         for call in calls:
             try:
@@ -180,7 +229,7 @@ def run_coach_loop(
     username: str,
     message: str,
     history: list[dict],
-) -> str:
+) -> CoachRunResult:
     tools = CoachTools(session, username)
     provider = settings.ai_provider.strip().lower()
     if provider == "openai":

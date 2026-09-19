@@ -49,6 +49,8 @@ class StockfishAnalyzer:
             raise StockfishUnavailable("No executable Stockfish binary was found")
         self.engine: chess.engine.SimpleEngine | None = None
         self.signature = f"stockfish:{Path(self.path).name}:depth={settings.stockfish_depth}"
+        self.cache_hits = 0
+        self.cache_misses = 0
 
     def __enter__(self) -> StockfishAnalyzer:
         self.engine = chess.engine.SimpleEngine.popen_uci(self.path)
@@ -75,6 +77,7 @@ class StockfishAnalyzer:
         key = self._key(board.fen(), perspective)
         cached = session.scalar(select(EngineCache).where(EngineCache.cache_key == key))
         if cached:
+            self.cache_hits += 1
             return Evaluation(
                 cached.score_cp,
                 chess.Move.from_uci(cached.best_move_uci) if cached.best_move_uci else None,
@@ -82,6 +85,7 @@ class StockfishAnalyzer:
             )
         if not self.engine:
             raise RuntimeError("StockfishAnalyzer must be used as a context manager")
+        self.cache_misses += 1
         info = self.engine.analyse(
             board,
             chess.engine.Limit(depth=self.settings.stockfish_depth),

@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     job_poll_seconds: float = 1.0
     coach_history_limit: int = 12
     coach_max_tool_rounds: int = 5
+    auth_required: bool = False
+    app_access_key: str | None = None
+    session_secret: str | None = None
+    session_ttl_hours: int = 24
+    trust_proxy_headers: bool = False
+    auth_attempts_per_hour: int = 10
+    ingest_requests_per_hour: int = 6
+    coach_requests_per_hour: int = 30
+    drill_mutations_per_hour: int = 120
 
     @field_validator("tracked_usernames", "cors_origins", mode="before")
     @classmethod
@@ -59,3 +68,25 @@ def ensure_durable_database(settings: Settings) -> None:
             "Production SQLite is ephemeral. Configure DATABASE_URL or explicitly set "
             "ALLOW_EPHEMERAL_DATABASE=true for a disposable demo."
         )
+
+
+def ensure_security_configuration(settings: Settings) -> None:
+    if not settings.auth_required:
+        return
+    if not settings.app_access_key or len(settings.app_access_key) < 16:
+        raise RuntimeError(
+            "APP_ACCESS_KEY must contain at least 16 characters when auth is enabled"
+        )
+    if not settings.session_secret or len(settings.session_secret) < 32:
+        raise RuntimeError(
+            "SESSION_SECRET must contain at least 32 characters when auth is enabled"
+        )
+
+
+def normalized_database_url(url: str) -> str:
+    """Select psycopg 3 when providers supply a generic PostgreSQL URL."""
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+psycopg://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return url

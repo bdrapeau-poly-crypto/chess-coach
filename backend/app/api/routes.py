@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import secrets
+from datetime import UTC, datetime, timedelta
+from time import perf_counter
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
@@ -18,6 +20,7 @@ from app.models import (
     Game,
     IngestJob,
     StyleProfile,
+    UsageEvent,
     WeaknessProfile,
 )
 from app.practice.leitner import mastery, queue_from_blunders, record_attempt
@@ -28,8 +31,19 @@ from app.schemas import (
     DrillAttemptRequest,
     DrillCardResponse,
     JobResponse,
+    SessionRequest,
+    SessionResponse,
     StyleGapResponse,
 )
+from app.security import (
+    bearer_token,
+    enforce_rate_limit,
+    issue_session_token,
+    request_identity,
+    require_authenticated,
+    verify_session_token,
+)
+from app.telemetry import record_coach_result, record_usage_event
 
 router = APIRouter()
 
@@ -58,11 +72,59 @@ def health_stockfish(settings: Settings = Depends(get_settings)) -> dict:
     return result
 
 
+@router.get("/auth/session", response_model=SessionResponse)
+def auth_status(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> SessionResponse:
+    authenticated = not settings.auth_required or verify_session_token(
+        bearer_token(request), settings
+    )
+    return SessionResponse(authenticated=authenticated, auth_required=settings.auth_required)
+
+
+@router.post("/auth/session", response_model=SessionResponse)
+def create_session(
+    payload: SessionRequest,
+    request: Request,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> SessionResponse:
+    if not settings.auth_required:
+        return SessionResponse(authenticated=True, auth_required=False)
+    enforce_rate_limit(
+        session,
+        category="auth",
+        identity=request_identity(request, settings),
+        limit=settings.auth_attempts_per_hour,
+    )
+    if not settings.app_access_key or not secrets.compare_digest(
+        payload.access_key, settings.app_access_key
+    ):
+        raise HTTPException(status_code=401, detail="Invalid private beta access key")
+    token, expires_at = issue_session_token(settings)
+    return SessionResponse(
+        authenticated=True,
+        auth_required=True,
+        token=token,
+        expires_at=expires_at,
+    )
+
+
 @router.post("/ingest/{username}", response_model=JobResponse, status_code=status.HTTP_202_ACCEPTED)
 def ingest(
     username: str,
+    request: Request,
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> JobResponse:
+    principal = require_authenticated(request, settings)
+    enforce_rate_limit(
+        session,
+        category="ingest",
+        identity=principal,
+        limit=settings.ingest_requests_per_hour,
+    )
     try:
         job, created = create_ingest_job(session, username)
     except ValueError as exc:
@@ -76,7 +138,13 @@ def ingest(
 
 
 @router.get("/ingest/jobs/{job_id}")
-def ingest_status(job_id: int, session: Session = Depends(get_session)) -> dict:
+def ingest_status(
+    job_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    require_authenticated(request, settings)
     job = session.get(IngestJob, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -137,7 +205,10 @@ def style_match(username: str, session: Session = Depends(get_session)) -> dict:
     return {
         "username": user.username,
         "matches": matches,
-        "coverage_note": "Ranked against the currently loaded reference corpus.",
+        "coverage_note": (
+            f"Ranked against {len(matches)} illustrative seeded grandmaster references; "
+            "this is not an all-grandmaster corpus."
+        ),
     }
 
 
@@ -253,9 +324,20 @@ def drill_queue(
 @router.post("/drill/{username}/queue")
 def prepare_drill_queue(
     username: str,
+    request: Request,
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> dict:
     user = require_user(session, username)
+    if user.is_demo:
+        return {"username": user.username, "created": 0, "demo": True}
+    principal = require_authenticated(request, settings)
+    enforce_rate_limit(
+        session,
+        category="drill",
+        identity=principal,
+        limit=settings.drill_mutations_per_hour,
+    )
     created = queue_from_blunders(session, user.id)
     session.commit()
     return {"username": user.username, "created": created}
@@ -265,7 +347,9 @@ def prepare_drill_queue(
 def drill_attempt(
     username: str,
     payload: DrillAttemptRequest,
+    request: Request,
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> dict:
     user = require_user(session, username)
     card = session.scalar(
@@ -275,6 +359,23 @@ def drill_attempt(
         raise HTTPException(status_code=404, detail="Drill card not found")
     expected = card.position.best_move_uci
     correct = expected is not None and payload.attempted_move_uci.lower() == expected.lower()
+    if user.is_demo:
+        return {
+            "attempt_id": None,
+            "correct": correct,
+            "correct_move": expected,
+            "previous_box": card.box,
+            "next_box": card.box,
+            "due_at": card.due_at,
+            "demo": True,
+        }
+    principal = require_authenticated(request, settings)
+    enforce_rate_limit(
+        session,
+        category="drill",
+        identity=principal,
+        limit=settings.drill_mutations_per_hour,
+    )
     attempt = record_attempt(
         session,
         card,
@@ -302,12 +403,21 @@ def drill_mastery(username: str, session: Session = Depends(get_session)) -> dic
 @router.post("/coach", response_model=CoachResponse)
 def coach(
     payload: CoachRequest,
+    request: Request,
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> CoachResponse:
     require_user(session, payload.username)
+    principal = require_authenticated(request, settings)
+    enforce_rate_limit(
+        session,
+        category="coach",
+        identity=principal,
+        limit=settings.coach_requests_per_hour,
+    )
+    started = perf_counter()
     try:
-        answer = run_coach_loop(
+        result = run_coach_loop(
             session,
             settings,
             username=payload.username,
@@ -315,5 +425,85 @@ def coach(
             history=[message.model_dump() for message in payload.history],
         )
     except CoachUnavailable as exc:
+        record_usage_event(
+            session,
+            event_type="coach",
+            status="failed",
+            duration_ms=int((perf_counter() - started) * 1000),
+            username=payload.username,
+            provider=settings.ai_provider,
+            error_type=type(exc).__name__,
+        )
+        session.commit()
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return CoachResponse(answer=answer)
+    except Exception as exc:
+        session.rollback()
+        record_usage_event(
+            session,
+            event_type="coach",
+            status="failed",
+            duration_ms=int((perf_counter() - started) * 1000),
+            username=payload.username,
+            provider=settings.ai_provider,
+            error_type=type(exc).__name__,
+        )
+        session.commit()
+        raise
+    record_coach_result(
+        session,
+        result,
+        username=payload.username,
+        duration_ms=int((perf_counter() - started) * 1000),
+    )
+    session.commit()
+    return CoachResponse(answer=result.answer)
+
+
+@router.get("/metrics/summary")
+def metrics_summary(
+    request: Request,
+    days: int = Query(default=30, ge=1, le=90),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    require_authenticated(request, settings)
+    since = datetime.now(UTC) - timedelta(days=days)
+    rows = session.execute(
+        select(
+            UsageEvent.event_type,
+            UsageEvent.status,
+            func.count(UsageEvent.id),
+            func.sum(UsageEvent.duration_ms),
+            func.sum(UsageEvent.input_tokens),
+            func.sum(UsageEvent.output_tokens),
+            func.sum(UsageEvent.cache_read_tokens),
+            func.sum(UsageEvent.cache_write_tokens),
+        )
+        .where(UsageEvent.created_at >= since)
+        .group_by(UsageEvent.event_type, UsageEvent.status)
+    ).all()
+    return {
+        "days": days,
+        "events": [
+            {
+                "event_type": event_type,
+                "status": event_status,
+                "count": int(count),
+                "duration_ms": int(duration_ms or 0),
+                "input_tokens": int(input_tokens or 0),
+                "output_tokens": int(output_tokens or 0),
+                "cache_read_tokens": int(cache_read_tokens or 0),
+                "cache_write_tokens": int(cache_write_tokens or 0),
+            }
+            for (
+                event_type,
+                event_status,
+                count,
+                duration_ms,
+                input_tokens,
+                output_tokens,
+                cache_read_tokens,
+                cache_write_tokens,
+            ) in rows
+        ],
+    }

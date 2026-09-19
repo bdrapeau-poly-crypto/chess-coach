@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
-from app.config import ensure_durable_database, get_settings
+from app.config import ensure_durable_database, ensure_security_configuration, get_settings
 from app.database import SessionLocal, create_schema
 from app.jobs.scheduler import build_scheduler
 from app.jobs.worker import JobWorker
@@ -21,6 +21,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     ensure_durable_database(settings)
+    ensure_security_configuration(settings)
     create_schema()
     if settings.seed_demo_data:
         with SessionLocal() as session:
