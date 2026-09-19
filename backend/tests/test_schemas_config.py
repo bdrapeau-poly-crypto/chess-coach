@@ -25,7 +25,7 @@ def test_settings_split_csv(field, value, expected):
 def test_default_coach_provider_is_openai_codex():
     assert Settings(_env_file=None).ai_provider == "openai"
     assert Settings(_env_file=None).openai_model == "gpt-5.3-codex"
-    assert Settings(_env_file=None).anthropic_model == "claude-sonnet-5"
+    assert Settings(_env_file=None).anthropic_model == "claude-haiku-4-5"
     assert sum("cache_control" in tool for tool in TOOL_DEFINITIONS) == 1
     with pytest.raises(RuntimeError, match="Production SQLite"):
         ensure_durable_database(Settings(_env_file=None, environment="production"))

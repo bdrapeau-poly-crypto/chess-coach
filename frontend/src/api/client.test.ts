@@ -68,7 +68,10 @@ describe("request", () => {
 
   it("sends attempted moves without trusting client correctness", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ correct: true, next_box: 2, due_at: "later" }), { status: 200 }),
+      new Response(
+        JSON.stringify({ correct: true, correct_move: "e2e4", next_box: 2, due_at: "later" }),
+        { status: 200 },
+      ),
     );
     await recordDrillAttempt("player", 7, "e2e4");
     const options = fetchMock.mock.calls[0][1] as RequestInit;
@@ -99,9 +102,15 @@ describe("request", () => {
   });
 
   it("returns drill queue payloads", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify([{ card_id: 2, theme: "pin" }]), { status: 200 }),
-    );
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ username: "player", created: 1 }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([{ card_id: 2, theme: "pin" }]), { status: 200 }),
+      );
     await expect(getDrills("player")).resolves.toEqual([{ card_id: 2, theme: "pin" }]);
+    expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ method: "POST" }));
   });
 });

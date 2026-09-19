@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 
+import httpx
 import pytest
+from anthropic import AuthenticationError
 
 from app.coach import loop as coach_loop
 from app.coach.loop import CoachUnavailable, run_coach_loop
@@ -82,5 +84,38 @@ def test_unknown_provider_is_rejected(session):
             Settings(_env_file=None, ai_provider="other"),
             username="player",
             message="Help",
+            history=[],
+        )
+
+
+def test_anthropic_authentication_error_is_actionable(session, monkeypatch):
+    add_user(session)
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    response = httpx.Response(401, request=request)
+
+    class FailingMessages:
+        def create(self, **kwargs):
+            raise AuthenticationError(
+                "API key is invalid",
+                response=response,
+                body={"error": {"type": "authentication_error"}},
+            )
+
+    monkeypatch.setattr(
+        coach_loop,
+        "Anthropic",
+        lambda **kwargs: SimpleNamespace(messages=FailingMessages()),
+    )
+
+    with pytest.raises(CoachUnavailable, match="Update ANTHROPIC_API_KEY in Render"):
+        run_coach_loop(
+            session,
+            Settings(
+                _env_file=None,
+                ai_provider="anthropic",
+                anthropic_api_key="invalid-test-key",
+            ),
+            username="player",
+            message="Queue drills",
             history=[],
         )

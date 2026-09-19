@@ -77,14 +77,20 @@ export async function getBlunders(username: string): Promise<Blunder[]> {
 }
 
 export function getDrills(username: string): Promise<DrillCard[]> {
-  return request(`/drill/${encodeURIComponent(username)}/queue`);
+  const path = `/drill/${encodeURIComponent(username)}/queue`;
+  return request<{ created: number }>(path, { method: "POST" }).then(() => request(path));
 }
 
 export function recordDrillAttempt(
   username: string,
   cardId: number,
   attemptedMoveUci: string,
-): Promise<{ correct: boolean; due_at: string; next_box: number }> {
+): Promise<{
+  correct: boolean;
+  correct_move: string | null;
+  due_at: string;
+  next_box: number;
+}> {
   return request(`/drill/${encodeURIComponent(username)}/attempt`, {
     method: "POST",
     body: JSON.stringify({

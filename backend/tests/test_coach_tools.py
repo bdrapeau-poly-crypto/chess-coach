@@ -128,13 +128,17 @@ def test_opening_stats_preserve_unknown_bucket(session, coach_data):
 def test_queue_practice_creates_cards(session, coach_data):
     result = CoachTools(session, "coach-player").queue_practice()
     assert result["created"] == 1
+    assert result["total_queued"] == 1
+    assert result["due_now"] == 1
     assert session.scalar(select(func.count(DrillCard.id))) == 1
 
 
 def test_queue_practice_is_idempotent(session, coach_data):
     tools = CoachTools(session, "coach-player")
     tools.queue_practice()
-    assert tools.queue_practice()["created"] == 0
+    result = tools.queue_practice()
+    assert result["created"] == 0
+    assert result["total_queued"] == 1
 
 
 @pytest.mark.parametrize(

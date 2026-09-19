@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5.3-codex"
     openai_reasoning_effort: str = "medium"
     anthropic_api_key: str | None = None
-    anthropic_model: str = "claude-sonnet-5"
+    anthropic_model: str = "claude-haiku-4-5"
     stockfish_path: str | None = None
     stockfish_depth: int = 12
     stockfish_hash_mb: int = 128

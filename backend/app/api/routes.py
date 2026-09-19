@@ -20,7 +20,7 @@ from app.models import (
     StyleProfile,
     WeaknessProfile,
 )
-from app.practice.leitner import mastery, record_attempt
+from app.practice.leitner import mastery, queue_from_blunders, record_attempt
 from app.profiling.profiles import STYLE_FIELDS, get_user, refresh_style_profile, style_matches
 from app.schemas import (
     CoachRequest,
@@ -250,6 +250,17 @@ def drill_queue(
     ]
 
 
+@router.post("/drill/{username}/queue")
+def prepare_drill_queue(
+    username: str,
+    session: Session = Depends(get_session),
+) -> dict:
+    user = require_user(session, username)
+    created = queue_from_blunders(session, user.id)
+    session.commit()
+    return {"username": user.username, "created": created}
+
+
 @router.post("/drill/{username}/attempt")
 def drill_attempt(
     username: str,
@@ -275,6 +286,7 @@ def drill_attempt(
     return {
         "attempt_id": attempt.id,
         "correct": attempt.correct,
+        "correct_move": expected,
         "previous_box": attempt.previous_box,
         "next_box": attempt.next_box,
         "due_at": card.due_at,

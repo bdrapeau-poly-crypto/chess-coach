@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.models import BlunderPosition, Game, WeaknessProfile
+from app.models import BlunderPosition, DrillCard, Game, WeaknessProfile
 from app.practice.leitner import queue_from_blunders
 from app.profiling.profiles import get_user
 
@@ -45,7 +45,10 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "queue_practice",
-        "description": "Idempotently queue drills from the player's own blundered positions.",
+        "description": (
+            "Ensure drills are queued from the player's own blundered positions and report "
+            "how many cards are available. A created count of zero can mean cards already exist."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
@@ -181,4 +184,23 @@ class CoachTools:
             limit=min(limit, 20),
         )
         self.session.commit()
-        return {"created": created, "queued_at": datetime.now(UTC).isoformat()}
+        now = datetime.now(UTC)
+        total_queued = self.session.scalar(
+            select(func.count(DrillCard.id)).where(
+                DrillCard.user_id == self.user.id,
+                DrillCard.retired.is_(False),
+            )
+        )
+        due_now = self.session.scalar(
+            select(func.count(DrillCard.id)).where(
+                DrillCard.user_id == self.user.id,
+                DrillCard.retired.is_(False),
+                DrillCard.due_at <= now,
+            )
+        )
+        return {
+            "created": created,
+            "total_queued": int(total_queued or 0),
+            "due_now": int(due_now or 0),
+            "queued_at": now.isoformat(),
+        }

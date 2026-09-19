@@ -61,6 +61,14 @@ th { color: #536159; font-size: .78rem; text-transform: uppercase; letter-spacin
 .drill-layout { display: grid; grid-template-columns: minmax(280px, 480px) 1fr; gap: 2rem; align-items: center; }
 .drill-board { width: 100%; }
 .feedback { color: #1f6846; font-weight: 600; }
+.feedback.incorrect { color: #a33f29; }
+.drill-progress { color: #687069; font-size: .9rem; }
+.drill-hint { padding: .8rem 1rem; background: #f0e8d8; border-left: 3px solid #d6a35d; }
+.drill-error { color: #a33f29; }
+.answer { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.drill-actions { display: flex; flex-wrap: wrap; gap: .65rem; margin-top: 1rem; }
+button.secondary.dark { color: #183c2c; border-color: #879087; }
+button.secondary.dark:hover { color: white; border-color: #bd4e33; }
 .coach-panel form { display: grid; gap: .75rem; }
 .coach-panel button { justify-self: start; }
 .conversation { display: grid; gap: .8rem; margin: 1rem 0 1.5rem; }

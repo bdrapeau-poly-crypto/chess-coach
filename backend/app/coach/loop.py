@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import json
 
-from anthropic import Anthropic
+from anthropic import (
+    Anthropic,
+    APIConnectionError,
+    APIStatusError,
+    AuthenticationError,
+    RateLimitError,
+)
 from openai import OpenAI
 from sqlalchemy.orm import Session
 
@@ -113,19 +119,34 @@ def _run_anthropic_loop(
     messages = history[-settings.coach_history_limit :] + [{"role": "user", "content": message}]
 
     for _ in range(settings.coach_max_tool_rounds):
-        response = client.messages.create(
-            model=settings.anthropic_model,
-            max_tokens=1200,
-            system=[
-                {
-                    "type": "text",
-                    "text": SYSTEM_PROMPT,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            tools=TOOL_DEFINITIONS,
-            messages=messages,
-        )
+        try:
+            response = client.messages.create(
+                model=settings.anthropic_model,
+                max_tokens=1200,
+                system=[
+                    {
+                        "type": "text",
+                        "text": SYSTEM_PROMPT,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
+                tools=TOOL_DEFINITIONS,
+                messages=messages,
+            )
+        except AuthenticationError as exc:
+            raise CoachUnavailable(
+                "AI coach authentication failed. Update ANTHROPIC_API_KEY in Render."
+            ) from exc
+        except RateLimitError as exc:
+            raise CoachUnavailable(
+                "AI coach is temporarily rate-limited or out of API credit. Try again later."
+            ) from exc
+        except APIConnectionError as exc:
+            raise CoachUnavailable("AI coach could not reach Anthropic. Try again later.") from exc
+        except APIStatusError as exc:
+            raise CoachUnavailable(
+                f"AI coach provider returned HTTP {exc.status_code}. Try again later."
+            ) from exc
         serialized = _serialize_content(response.content)
         messages.append({"role": "assistant", "content": serialized})
         calls = [block for block in response.content if block.type == "tool_use"]

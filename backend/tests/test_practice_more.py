@@ -3,8 +3,10 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import func, select
 
+from app.api.routes import drill_attempt
 from app.models import BlunderPosition, DrillCard, Game, User
 from app.practice.leitner import BOX_INTERVALS, mastery, queue_from_blunders, record_attempt
+from app.schemas import DrillAttemptRequest
 
 
 def add_practice_data(session):
@@ -91,6 +93,21 @@ def test_incorrect_attempt_resets_card(session):
     card.box = 4
     attempt = record_attempt(session, card, correct=False, attempted_move_uci="e2e3")
     assert attempt.next_box == 1
+
+
+def test_attempt_response_reveals_correct_move_after_grading(session):
+    user, _, _ = add_practice_data(session)
+    queue_from_blunders(session, user.id, limit=1)
+    card = session.scalar(select(DrillCard))
+
+    result = drill_attempt(
+        "practice",
+        DrillAttemptRequest(card_id=card.id, attempted_move_uci="e2e3"),
+        session,
+    )
+
+    assert result["correct"] is False
+    assert result["correct_move"] == "e2f2"
 
 
 def test_mastery_summarizes_theme(session):

@@ -15,6 +15,7 @@ from app.database import SessionLocal
 from app.ingestion.chesscom import ChessComClient
 from app.ingestion.pgn import normalize_username, parse_game
 from app.models import ArchiveCache, Game, IngestJob, JobStatus, User
+from app.practice.leitner import queue_from_blunders
 from app.profiling.profiles import refresh_style_profile, refresh_weakness_profile
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,13 @@ def _get_or_create_user(session: Session, username: str) -> User:
         session.add(user)
         session.flush()
     return user
+
+
+def refresh_user_outputs(session: Session, user_id: int) -> int:
+    """Rebuild derived profiles and idempotently prepare practice cards."""
+    refresh_weakness_profile(session, user_id)
+    refresh_style_profile(session, user_id)
+    return queue_from_blunders(session, user_id)
 
 
 async def _fetch_games(session: Session, username: str, cap: int) -> list[dict]:
@@ -190,8 +198,7 @@ async def run_ingest_job(job_id: int) -> None:
                             "Game failed during ingest job %s: %s", job_id, type(exc).__name__
                         )
 
-            refresh_weakness_profile(session, user.id)
-            refresh_style_profile(session, user.id)
+            refresh_user_outputs(session, user.id)
             job = session.get(IngestJob, job_id)
             if job:
                 job.status = JobStatus.COMPLETED

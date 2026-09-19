@@ -51,8 +51,8 @@ not represented as a real person's Chess.com history.
 ## Tests
 
 ```bash
-cd backend && python -m pytest tests -v && ruff check .  # 126 tests
-cd frontend && npm test && npm run lint && npm run typecheck && npm run build  # 17 tests
+cd backend && python -m pytest tests -v && ruff check .  # 129 tests
+cd frontend && npm test && npm run lint && npm run typecheck && npm run build  # 24 tests
 ```
 
 ## Deployment
@@ -61,7 +61,8 @@ Import the repository into Render as a **Blueprint** so the root `render.yaml` i
 The included Blueprint is a disposable free-tier demo: it selects Anthropic, requires
 `ANTHROPIC_API_KEY` and `CORS_ORIGINS`, and explicitly permits temporary SQLite storage. Data
 can reset whenever the free service sleeps, restarts, or redeploys, and the nightly refresh is
-disabled. For durable production use, configure external Postgres through `DATABASE_URL`,
+disabled. The coach defaults to Claude Haiku 4.5 for the lowest current Claude API token cost
+that supports this short tool-use workflow. For durable production use, configure external Postgres through `DATABASE_URL`,
 disable `ALLOW_EPHEMERAL_DATABASE`, and add a scheduled refresh service. OpenAI remains
 supported as an optional coach provider.
 
@@ -74,7 +75,7 @@ preview deployments for pull requests when Git integration is enabled.
 - `GET /profile/{username}`
 - `GET /style/{username}/match` and `GET /style-gap/{username}`
 - `GET /blunders/{username}` and `GET /openings/{username}`
-- `GET /drill/{username}/queue`, `POST /drill/{username}/attempt`, and
+- `GET|POST /drill/{username}/queue`, `POST /drill/{username}/attempt`, and
   `GET /drill/{username}/mastery`
 - `POST /coach`
 - `GET /health` and `GET /health/stockfish`
