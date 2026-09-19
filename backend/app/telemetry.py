@@ -80,11 +80,13 @@ def record_coach_result(
 ) -> UsageEvent:
     values = asdict(result)
     values.pop("answer")
+    cost_usd = values.pop("cost_usd")
     return record_usage_event(
         session,
         event_type="coach",
         status="completed",
         duration_ms=duration_ms,
         username=username,
+        details={"cost_usd": round(cost_usd, 9)},
         **values,
     )

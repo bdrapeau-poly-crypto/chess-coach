@@ -97,6 +97,12 @@ fail the monitor by default. A failed monitor opens a deduplicated GitHub issue.
 `COACH_DAILY_TOKEN_ALERT` to a nonzero repository-variable threshold to add a coarse token-volume
 guard; use Anthropic Console's workspace spend notification for an authoritative dollar alert.
 
+The coach also enforces a durable, fail-closed API cost ledger before each Anthropic call. The
+default `AI_DAILY_BUDGET_USD=0.50` is the 30-day equivalent of a $15 monthly budget. Each call
+reserves a conservative maximum, reconciles that reservation to actual token cost, and retains
+unknown-cost reservations when the provider outcome cannot be accounted for. The hourly
+production monitor opens an alert if the daily coach budget is exhausted.
+
 `.github/workflows/neon-restore-drill.yml` runs weekly. It creates a short-lived point-in-time
 restore branch from `production` at five minutes before the run, validates the expected schema,
 Alembic head, and restored user data, then deletes the drill branch. The branch also expires after

@@ -13,6 +13,13 @@ from anthropic import (
 from openai import OpenAI
 from sqlalchemy.orm import Session
 
+from app.coach.budget import (
+    AiBudgetExceeded,
+    anthropic_actual_cost,
+    estimate_anthropic_call_cost,
+    reconcile_anthropic_call,
+    reserve_anthropic_call,
+)
 from app.coach.tools import TOOL_DEFINITIONS, CoachTools
 from app.config import Settings
 
@@ -43,6 +50,7 @@ class CoachRunResult:
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
     tool_rounds: int = 0
+    cost_usd: float = 0.0
 
 
 def _serialize_content(content: list) -> list[dict]:
@@ -136,6 +144,7 @@ def _run_openai_loop(
 
 
 def _run_anthropic_loop(
+    session: Session,
     tools: CoachTools,
     settings: Settings,
     *,
@@ -150,8 +159,26 @@ def _run_anthropic_loop(
     output_tokens = 0
     cache_read_tokens = 0
     cache_write_tokens = 0
+    total_cost_usd = 0.0
 
     for round_index in range(settings.coach_max_tool_rounds):
+        estimated_input_tokens = max(
+            1,
+            len(json.dumps([SYSTEM_PROMPT, TOOL_DEFINITIONS, messages], default=str)) // 3,
+        )
+        try:
+            reservation = reserve_anthropic_call(
+                session,
+                settings,
+                username=tools.user.username,
+                maximum_cost_usd=estimate_anthropic_call_cost(
+                    settings,
+                    estimated_input_tokens=estimated_input_tokens,
+                    max_output_tokens=1200,
+                ),
+            )
+        except AiBudgetExceeded as exc:
+            raise CoachUnavailable(str(exc)) from exc
         try:
             response = client.messages.create(
                 model=settings.anthropic_model,
@@ -181,10 +208,23 @@ def _run_anthropic_loop(
                 f"AI coach provider returned HTTP {exc.status_code}. Try again later."
             ) from exc
         usage = getattr(response, "usage", None)
-        input_tokens += int(getattr(usage, "input_tokens", 0) or 0)
-        output_tokens += int(getattr(usage, "output_tokens", 0) or 0)
-        cache_read_tokens += int(getattr(usage, "cache_read_input_tokens", 0) or 0)
-        cache_write_tokens += int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+        call_input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+        call_output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+        call_cache_read_tokens = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+        call_cache_write_tokens = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+        call_cost_usd = anthropic_actual_cost(
+            settings,
+            input_tokens=call_input_tokens,
+            output_tokens=call_output_tokens,
+            cache_read_tokens=call_cache_read_tokens,
+            cache_write_tokens=call_cache_write_tokens,
+        )
+        reconcile_anthropic_call(session, reservation, actual_cost_usd=call_cost_usd)
+        total_cost_usd += call_cost_usd
+        input_tokens += call_input_tokens
+        output_tokens += call_output_tokens
+        cache_read_tokens += call_cache_read_tokens
+        cache_write_tokens += call_cache_write_tokens
         serialized = _serialize_content(response.content)
         messages.append({"role": "assistant", "content": serialized})
         calls = [block for block in response.content if block.type == "tool_use"]
@@ -200,6 +240,7 @@ def _run_anthropic_loop(
                 cache_read_tokens=cache_read_tokens,
                 cache_write_tokens=cache_write_tokens,
                 tool_rounds=round_index,
+                cost_usd=total_cost_usd,
             )
         results = []
         for call in calls:
@@ -235,5 +276,5 @@ def run_coach_loop(
     if provider == "openai":
         return _run_openai_loop(tools, settings, message=message, history=history)
     if provider == "anthropic":
-        return _run_anthropic_loop(tools, settings, message=message, history=history)
+        return _run_anthropic_loop(session, tools, settings, message=message, history=history)
     raise CoachUnavailable("AI_PROVIDER must be 'openai' or 'anthropic'")

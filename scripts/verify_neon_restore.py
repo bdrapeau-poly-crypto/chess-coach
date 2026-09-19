@@ -7,6 +7,8 @@ from sqlalchemy import create_engine, inspect, text
 from app.config import normalized_database_url
 
 REQUIRED_TABLES = {
+    "ai_cost_reservations",
+    "ai_daily_budgets",
     "alembic_version",
     "archive_cache",
     "blunder_positions",

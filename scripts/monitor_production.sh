@@ -74,6 +74,11 @@ curl "${curl_common[@]}" \
   "$API_URL/metrics/summary?days=1" \
   --output "$work_dir/metrics.json"
 
+if ! jq -e '.ai_budget.remaining_usd > 0' "$work_dir/metrics.json" >/dev/null; then
+  echo "Daily AI coach budget is exhausted or unavailable" >&2
+  exit 1
+fi
+
 failed_ingests="$(
   jq '[.events[] | select(.event_type == "ingest" and .status == "failed") | .count] | add // 0' \
     "$work_dir/metrics.json"
@@ -92,4 +97,5 @@ if (( COACH_DAILY_TOKEN_ALERT > 0 && coach_tokens >= COACH_DAILY_TOKEN_ALERT ));
   exit 1
 fi
 
-echo "Production healthy: commit=${EXPECTED_COMMIT:-unchecked}, failed_ingests=$failed_ingests, coach_tokens=$coach_tokens"
+ai_budget_remaining="$(jq -r '.ai_budget.remaining_usd' "$work_dir/metrics.json")"
+echo "Production healthy: commit=${EXPECTED_COMMIT:-unchecked}, failed_ingests=$failed_ingests, coach_tokens=$coach_tokens, ai_budget_remaining_usd=$ai_budget_remaining"

@@ -81,6 +81,11 @@ def test_metrics_summary_requires_authentication(session):
     )
     assert response.status_code == 200
     assert response.json()["events"][0]["input_tokens"] == 10
+    assert response.json()["ai_budget"] == {
+        "daily_limit_usd": 0.5,
+        "committed_usd": 0.0,
+        "remaining_usd": 0.5,
+    }
 
 
 def test_tracked_users_requires_authentication_and_excludes_demo(session):

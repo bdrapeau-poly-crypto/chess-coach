@@ -16,6 +16,7 @@ from app.database import get_session
 from app.ingestion.pgn import normalize_username
 from app.jobs.ingest import create_ingest_job
 from app.models import (
+    AiDailyBudget,
     BlunderPosition,
     DrillCard,
     Game,
@@ -502,8 +503,19 @@ def metrics_summary(
         .where(UsageEvent.created_at >= since)
         .group_by(UsageEvent.event_type, UsageEvent.status)
     ).all()
+    daily_budget = session.get(AiDailyBudget, datetime.now(UTC).date())
+    daily_committed_usd = (
+        daily_budget.committed_microusd / 1_000_000 if daily_budget else 0.0
+    )
     return {
         "days": days,
+        "ai_budget": {
+            "daily_limit_usd": settings.ai_daily_budget_usd,
+            "committed_usd": round(daily_committed_usd, 6),
+            "remaining_usd": round(
+                max(0.0, settings.ai_daily_budget_usd - daily_committed_usd), 6
+            ),
+        },
         "events": [
             {
                 "event_type": event_type,

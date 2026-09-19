@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     openai_reasoning_effort: str = "medium"
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-haiku-4-5"
+    ai_daily_budget_usd: float = 0.50
+    anthropic_input_usd_per_mtok: float = 1.0
+    anthropic_cache_write_usd_per_mtok: float = 1.25
+    anthropic_cache_read_usd_per_mtok: float = 0.10
+    anthropic_output_usd_per_mtok: float = 5.0
+    ai_cost_reserve_multiplier: float = 1.25
     stockfish_path: str | None = None
     stockfish_depth: int = 12
     stockfish_hash_mb: int = 128
