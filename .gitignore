@@ -15,3 +15,5 @@ coverage/
 .coverage
 /frontend/vite.config.js
 /frontend/vite.config.d.ts
+.neon
+.env.local
