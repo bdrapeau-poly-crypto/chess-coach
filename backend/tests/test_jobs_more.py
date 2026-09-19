@@ -2,8 +2,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.jobs.ingest import create_ingest_job, release_stale_jobs
-from app.models import IngestJob, JobStatus
+from app.ingestion.chesscom import ArchiveResponse
+from app.jobs import ingest as ingest_module
+from app.jobs.ingest import _fetch_games, create_ingest_job, release_stale_jobs
+from app.models import ArchiveCache, IngestJob, JobStatus
 
 
 def test_stale_queued_job_is_superseded(session):
@@ -76,3 +78,38 @@ def test_failed_job_allows_retry(session):
     second, created = create_ingest_job(session, "retry-player")
     assert created is True
     assert second.id != first.id
+
+
+@pytest.mark.asyncio
+async def test_partial_resume_bypasses_archive_validators(session, monkeypatch):
+    session.add(
+        ArchiveCache(
+            username="player",
+            archive_url="https://example.test/archive",
+            etag="old-etag",
+            last_modified="old-date",
+        )
+    )
+    session.commit()
+    calls = []
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def get_archives(self, username):
+            return ["https://example.test/archive"]
+
+        async def get_archive(self, url, *, etag=None, last_modified=None):
+            calls.append((etag, last_modified))
+            return ArchiveResponse(url, [{"pgn": "game"}], "new-etag", "new-date")
+
+    monkeypatch.setattr(ingest_module, "ChessComClient", FakeClient)
+
+    games = await _fetch_games(session, "player", 10, force_refresh=True)
+
+    assert games == [{"pgn": "game"}]
+    assert calls == [(None, None)]

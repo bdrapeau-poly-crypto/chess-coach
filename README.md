@@ -88,6 +88,8 @@ API, exchanges the access key for a short-lived session, loads the exact non-dem
 usernames previously submitted for ingestion, queues each refresh, and polls it to a terminal
 status. It processes at most five users per run and fails visibly on job failure or timeout.
 `workflow_dispatch` accepts an optional username list for a bounded manual override.
+Ingest workers renew a ten-minute lease after every analyzed game and continuously requeue expired
+work, allowing an interrupted Render deployment to resume without waiting for a long fixed lease.
 
 ### Production monitoring and restore drills
 

@@ -21,7 +21,7 @@ from app.profiling.profiles import refresh_style_profile, refresh_weakness_profi
 from app.telemetry import record_usage_event
 
 logger = logging.getLogger(__name__)
-LEASE_DURATION = timedelta(hours=6)
+LEASE_DURATION = timedelta(minutes=10)
 
 
 def _is_before(value: datetime, threshold: datetime) -> bool:
@@ -98,7 +98,9 @@ def refresh_user_outputs(session: Session, user_id: int) -> int:
     return queue_from_blunders(session, user_id)
 
 
-async def _fetch_games(session: Session, username: str, cap: int) -> list[dict]:
+async def _fetch_games(
+    session: Session, username: str, cap: int, *, force_refresh: bool = False
+) -> list[dict]:
     collected: list[dict] = []
     async with ChessComClient() as client:
         archives = await client.get_archives(username)
@@ -110,8 +112,8 @@ async def _fetch_games(session: Session, username: str, cap: int) -> list[dict]:
             )
             response = await client.get_archive(
                 url,
-                etag=cached.etag if cached else None,
-                last_modified=cached.last_modified if cached else None,
+                etag=cached.etag if cached and not force_refresh else None,
+                last_modified=cached.last_modified if cached and not force_refresh else None,
             )
             if cached is None:
                 cached = ArchiveCache(username=username, archive_url=url)
@@ -150,7 +152,12 @@ async def run_ingest_job(job_id: int) -> None:
         cache_hits = 0
         cache_misses = 0
         try:
-            payloads = await _fetch_games(session, job.username, settings.max_games_per_ingest)
+            payloads = await _fetch_games(
+                session,
+                job.username,
+                settings.max_games_per_ingest,
+                force_refresh=job.games_analyzed > 0,
+            )
             job.games_fetched = len(payloads)
             session.commit()
             user = _get_or_create_user(session, job.username)
@@ -189,6 +196,7 @@ async def run_ingest_job(job_id: int) -> None:
                         row_id = row.id
                         analyze_game(session, row, analyzer)
                         job.games_analyzed += 1
+                        job.lease_expires_at = datetime.now(UTC) + LEASE_DURATION
                         session.commit()
                     except Exception as exc:
                         session.rollback()
@@ -200,6 +208,7 @@ async def run_ingest_job(job_id: int) -> None:
                         job = session.get(IngestJob, job_id)
                         if job:
                             job.games_failed += 1
+                            job.lease_expires_at = datetime.now(UTC) + LEASE_DURATION
                             session.commit()
                         logger.warning(
                             "Game failed during ingest job %s: %s", job_id, type(exc).__name__

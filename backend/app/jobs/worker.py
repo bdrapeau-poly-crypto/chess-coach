@@ -33,6 +33,9 @@ class JobWorker:
     def _run(self) -> None:
         while not self.stop_event.is_set():
             with SessionLocal() as session:
+                recovered = release_stale_jobs(session)
+                if recovered:
+                    logger.warning("Recovered %s expired ingest jobs", recovered)
                 job_id = session.scalar(
                     select(IngestJob.id)
                     .where(IngestJob.status == JobStatus.QUEUED)
