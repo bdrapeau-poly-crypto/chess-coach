@@ -1,0 +1,79 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Libre+Franklin:wght@700;800&display=swap");
+
+:root {
+  font-family: "DM Sans", sans-serif;
+  color: #19231d;
+  background: #f3efe5;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input, textarea { font: inherit; }
+button { cursor: pointer; }
+
+main { min-height: 100vh; }
+.hero {
+  padding: 6rem max(1.5rem, calc((100vw - 1100px) / 2));
+  background:
+    linear-gradient(115deg, rgba(10, 35, 25, .94), rgba(24, 61, 44, .83)),
+    repeating-linear-gradient(45deg, #193f2d 0 32px, #214b37 32px 64px);
+  color: #f8f3e8;
+}
+.eyebrow { text-transform: uppercase; letter-spacing: .16em; font-size: .76rem; font-weight: 600; color: #d6a35d; }
+h1, h2 { font-family: "Libre Franklin", sans-serif; margin: .3rem 0; letter-spacing: -.045em; }
+h1 { font-size: clamp(3rem, 10vw, 7rem); line-height: .9; }
+h2 { font-size: clamp(2rem, 5vw, 3.5rem); }
+.lede { max-width: 660px; font-size: 1.2rem; color: #d9e2db; }
+.player-form { display: flex; gap: .65rem; flex-wrap: wrap; margin-top: 2rem; }
+input, textarea { border: 1px solid #9a9e96; border-radius: 4px; padding: .85rem 1rem; background: #fffdf8; }
+input { min-width: min(100%, 310px); }
+textarea { width: 100%; resize: vertical; }
+button { border: 0; border-radius: 4px; padding: .85rem 1.2rem; font-weight: 600; background: #d46445; color: white; }
+button:hover { background: #bd4e33; }
+button.secondary { background: transparent; border: 1px solid #d9e2db; }
+button:disabled { opacity: .55; cursor: wait; }
+.status { color: #d9e2db; }
+.error { color: #ffbea8; font-weight: 600; }
+.dashboard { max-width: 1100px; margin: 0 auto; padding: 4rem 1.5rem; }
+.section-heading .eyebrow { margin-bottom: 0; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 2rem 0; }
+.stats article, .panel { background: #fffdf8; border: 1px solid #d7d1c4; box-shadow: 0 10px 30px rgba(39, 45, 40, .06); }
+.stats article { padding: 1.4rem; display: flex; flex-direction: column; }
+.stats strong { font-family: "Libre Franklin"; font-size: 2.2rem; }
+.stats span { color: #687069; }
+.panel { padding: clamp(1rem, 3vw, 2rem); margin-top: 1.5rem; }
+.chart-panel { min-height: 240px; }
+.tabs { display: flex; gap: .35rem; overflow-x: auto; padding: 1rem 0 .25rem; }
+.tabs button { background: transparent; color: #526057; text-transform: capitalize; border-bottom: 2px solid transparent; border-radius: 0; }
+.tabs button:hover, .tabs button.active { color: #183c2c; border-bottom-color: #d46445; }
+.split-panel { display: grid; grid-template-columns: minmax(220px, .75fr) minmax(300px, 1.25fr); align-items: center; gap: 2rem; }
+.split-panel h3 { font: 700 clamp(1.8rem, 4vw, 3rem) "Libre Franklin"; margin: .4rem 0; }
+.radar { max-width: 520px; margin: 0 auto; width: 100%; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: .9rem .75rem; border-bottom: 1px solid #ded8cc; }
+th { color: #536159; font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; }
+.position-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem; }
+.position-card { min-width: 0; }
+.position-card h3 { text-transform: capitalize; margin-bottom: .2rem; }
+.position-card p { color: #5c665f; }
+.drill-layout { display: grid; grid-template-columns: minmax(280px, 480px) 1fr; gap: 2rem; align-items: center; }
+.drill-board { width: 100%; }
+.feedback { color: #1f6846; font-weight: 600; }
+.coach-panel form { display: grid; gap: .75rem; }
+.coach-panel button { justify-self: start; }
+.conversation { display: grid; gap: .8rem; margin: 1rem 0 1.5rem; }
+.message { border-radius: 6px; padding: .5rem 1rem; }
+.message.user { background: #f0e8d8; margin-left: min(18%, 8rem); }
+.message.assistant { border-left: 3px solid #d6a35d; }
+.coach-board { max-width: 480px; margin: 1.5rem auto; }
+.coach-board figcaption { margin-top: .5rem; color: #5b635d; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+
+@media (max-width: 600px) {
+  .hero { padding-top: 4rem; }
+  .stats { grid-template-columns: 1fr; }
+  .player-form > * { width: 100%; }
+  .split-panel, .drill-layout, .position-grid { grid-template-columns: 1fr; }
+}

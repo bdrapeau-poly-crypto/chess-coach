@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.routes import router
+from app.config import ensure_durable_database, get_settings
+from app.database import SessionLocal, create_schema
+from app.jobs.scheduler import build_scheduler
+from app.jobs.worker import JobWorker
+from app.seed import seed_demo_data
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    ensure_durable_database(settings)
+    create_schema()
+    if settings.seed_demo_data:
+        with SessionLocal() as session:
+            seed_demo_data(session)
+    scheduler = None
+    worker = None
+    if settings.run_job_worker:
+        worker = JobWorker()
+        worker.start()
+        logger.info("Database-backed ingest worker started")
+    if settings.run_scheduler:
+        scheduler = build_scheduler()
+        scheduler.start()
+        logger.info("Local APScheduler started")
+    yield
+    if scheduler:
+        scheduler.shutdown(wait=False)
+    if worker:
+        worker.stop()
+
+
+app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+)
+app.include_router(router)
