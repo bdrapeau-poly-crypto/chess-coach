@@ -23,7 +23,7 @@ jobs:
           cache-dependency-path: backend/requirements-dev.txt
       - run: pip install --requirement requirements-dev.txt
       - run: ruff check .
-      - run: pytest tests --verbose
+      - run: python -m pytest tests --verbose
 
   frontend:
     runs-on: ubuntu-latest
