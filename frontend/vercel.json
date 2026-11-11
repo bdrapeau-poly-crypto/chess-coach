@@ -1,5 +1,12 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "framework": "vite"
+  "framework": "vite",
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "destination": "https://chesspattern-coach.netlify.app/$1",
+      "permanent": true
+    }
+  ]
 }

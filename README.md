@@ -205,3 +205,5 @@ timeout when the Render service wakes.
 Browser sign-ins are specific to the website origin, so users sign in again
 after moving from the old Vercel address. No saved analysis is transferred
 through browser storage.
+
+The former Vercel frontend redirects visitors to the Netlify website.
