@@ -1,5 +1,7 @@
 # Chess Coach
 
+[Use Chess Coach](https://frontend-taupe-omega-75.vercel.app) | [License](LICENSE) | [Security](SECURITY.md)
+
 Chess Coach ingests public Chess.com games, analyzes a bounded set with Stockfish, builds a
 reviewable weakness profile, turns the player's own mistakes into Leitner drills, and exposes
 live data to an Anthropic or OpenAI tool-use coaching loop.
@@ -142,3 +144,17 @@ Secrets remain server-side and must never use a `VITE_` prefix.
 Usage instrumentation stores request duration, provider/model, token counts, prompt-cache
 read/write counts, tool rounds, ingest totals, and Stockfish cache hit/miss counts. It does not
 store coach prompts or responses. View aggregates through authenticated `GET /metrics/summary`.
+
+
+## License
+
+Copyright (C) 2026 Brian J. Drapeau.
+
+The original Chess Coach application code is licensed under the
+GNU General Public License, version 3 or, at your option, any later version
+(`GPL-3.0-or-later`). See [LICENSE](LICENSE) for the full terms.
+Redistributions of covered modified versions must preserve the applicable
+notices and provide corresponding source under the GPL.
+
+Bundled Neon agent skills retain their Apache 2.0 license. Other dependencies
+retain their own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -17,3 +17,15 @@ coverage/
 /frontend/vite.config.d.ts
 .neon
 .env.local
+
+# Local credentials and deployment state
+.env.*
+!.env.example
+.vercel/
+.render/
+
+# SQLite sidecars can contain application data
+*.db-wal
+*.db-shm
+*.sqlite3-wal
+*.sqlite3-shm
