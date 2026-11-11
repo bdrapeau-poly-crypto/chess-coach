@@ -170,8 +170,12 @@ of random session tokens are stored in the database. The browser retains the
 session token in local storage, so sign out on shared devices. Administrator
 authentication remains separate.
 
-Account recovery and password reset are not implemented. Keep the password
-in a password manager. Saving a workspace does not verify ownership of the
+New accounts receive eight recovery codes. Existing users can generate codes
+while signed in by confirming their password. Save the codes in a password
+manager. Forgot password accepts an account name, recovery code, and new
+password. A reset revokes all sign-ins and replaces every recovery code.
+Only code hashes are stored. Lost passwords cannot be reset without a
+previously saved recovery code. Saving a workspace does not verify ownership of the
 Chess.com account, privatize its public game analysis, or save personal
 practice progress. Multiple accounts can save the same public workspace.
 
@@ -188,3 +192,16 @@ Deployment requires migration `b412fc5e901a` before the new backend starts.
 It adds `player_accounts` and `player_sessions` without modifying existing
 analysis tables. The normal backend Docker startup already runs migrations.
 Roll back application code without dropping these tables to preserve accounts.
+
+
+### Netlify website hosting
+
+The public website is https://chesspattern-coach.netlify.app in the same
+Netlify team as GxP Frame and Life Sciences AI Academy. `netlify.toml` builds
+`frontend/` on Node 22. The browser calls the existing Render API directly,
+and the backend permits the exact Netlify origin through CORS. Neon retains
+accounts and game analysis. This preserves the existing 90-second client
+timeout when the Render service wakes.
+Browser sign-ins are specific to the website origin, so users sign in again
+after moving from the old Vercel address. No saved analysis is transferred
+through browser storage.

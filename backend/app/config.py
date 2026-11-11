@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     stockfish_hash_mb: int = 128
     max_games_per_ingest: int = 50
     tracked_usernames: Annotated[list[str], NoDecode] = []
+    public_web_origin: str = "https://chesspattern-coach.netlify.app"
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5173"]
     seed_demo_data: bool = True
     allow_ephemeral_database: bool = False

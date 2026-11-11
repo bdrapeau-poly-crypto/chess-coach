@@ -29,3 +29,5 @@ coverage/
 *.db-shm
 *.sqlite3-wal
 *.sqlite3-shm
+
+.netlify/
