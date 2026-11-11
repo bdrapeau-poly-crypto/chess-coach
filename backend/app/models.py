@@ -318,3 +318,13 @@ class PlayerSession(Base):
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     account: Mapped[PlayerAccount] = relationship()
+
+
+class PlayerRecoveryCode(Base):
+    __tablename__ = "player_recovery_codes"
+
+    code_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("player_accounts.id", ondelete="CASCADE"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -15,6 +15,7 @@ export const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000")
 export interface PlayerAccount {
   login_name: string;
   workspace_username: string | null;
+  recovery_codes?: string[];
 }
 
 const PLAYER_SESSION_KEY = "chess-coach-player-session";
@@ -237,4 +238,16 @@ export async function pollJob(
     }
     await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
   }
+}
+
+
+export function generateRecoveryCodes(password: string): Promise<{ recovery_codes: string[] }> {
+  return request("/account/recovery-codes", { method: "POST", body: JSON.stringify({ password }) });
+}
+export async function resetPlayerPassword(loginName: string, recoveryCode: string, password: string): Promise<{ recovery_codes: string[] }> {
+  const result = await request<{ recovery_codes: string[] }>("/account/reset-password", {
+    method: "POST", body: JSON.stringify({ login_name: loginName, recovery_code: recoveryCode, password }),
+  });
+  clearPlayerSession();
+  return result;
 }

@@ -101,3 +101,8 @@ button.secondary.dark:hover { color: white; border-color: #bd4e33; }
 .account-form input { width: 100%; min-width: 0; }
 .account-access .text-button { color: inherit; }
 .section-heading > button { margin-top: .75rem; }
+
+.recovery-panel { margin: 1rem 0; border: 1px solid #ffffff60; padding: 1rem; max-width: 42rem; }
+.recovery-panel h2 { font-size: 1.25rem; }
+.recovery-panel ul { padding-left: 1.2rem; }
+.recovery-panel code { overflow-wrap: anywhere; font-size: .85rem; }

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.database import get_session
 from app.ingestion.pgn import normalize_username
-from app.models import PlayerAccount, PlayerSession
+from app.models import PlayerAccount, PlayerRecoveryCode, PlayerSession
 from app.security import enforce_rate_limit, request_identity
 
 
@@ -158,7 +158,8 @@ def register(
     except IntegrityError as exc:
         session.rollback()
         raise HTTPException(status_code=409, detail="Choose a different account name") from exc
-    return _issue(account, session, response)
+    codes = replace_recovery_codes(account, session)
+    return {**_issue(account, session, response), "recovery_codes": codes}
 
 
 @router.post("/login")
@@ -171,7 +172,9 @@ def login(
 ) -> dict:
     _limit(request, session, settings)
     account = session.scalar(
-        select(PlayerAccount).where(PlayerAccount.login_name == payload.login_name)
+        select(PlayerAccount)
+        .where(PlayerAccount.login_name == payload.login_name)
+        .with_for_update()
     )
     # Unknown names also perform the same expensive password derivation.
     stored = account.password_hash if account else "scrypt-v1$" + "00" * 16 + "$" + "00" * 32
@@ -208,3 +211,74 @@ def logout(request: Request, response: Response, session: Session = Depends(get_
     session.delete(row)
     session.commit()
     return {"signed_out": True}
+
+
+class RecoveryCodeRequest(BaseModel):
+    password: str = Field(min_length=12, max_length=128)
+
+
+class PasswordResetRequest(Credentials):
+    recovery_code: str = Field(min_length=32, max_length=64)
+
+
+def replace_recovery_codes(account: PlayerAccount, session: Session) -> list[str]:
+    session.execute(delete(PlayerRecoveryCode).where(PlayerRecoveryCode.account_id == account.id))
+    codes = []
+    for _ in range(8):
+        raw = secrets.token_hex(16)
+        session.add(
+            PlayerRecoveryCode(
+                code_hash=hashlib.sha256(raw.encode()).hexdigest(), account_id=account.id
+            )
+        )
+        codes.append("-".join(raw[i : i + 8] for i in range(0, 32, 8)))
+    return codes
+
+
+@router.post("/recovery-codes")
+def generate_recovery_codes(
+    payload: RecoveryCodeRequest,
+    request: Request,
+    response: Response,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    response.headers["Cache-Control"] = "no-store"
+    _limit(request, session, settings)
+    principal = require_account(request, session)
+    account = session.scalar(
+        select(PlayerAccount).where(PlayerAccount.id == principal.account_id).with_for_update()
+    )
+    if not password_matches(payload.password, account.password_hash):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    codes = replace_recovery_codes(account, session)
+    session.commit()
+    return {"recovery_codes": codes}
+
+
+@router.post("/reset-password")
+def reset_password(
+    payload: PasswordResetRequest,
+    request: Request,
+    response: Response,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    response.headers["Cache-Control"] = "no-store"
+    _limit(request, session, settings)
+    enforce_rate_limit(session, category="password-recovery", identity=payload.login_name, limit=5)
+    account = session.scalar(
+        select(PlayerAccount)
+        .where(PlayerAccount.login_name == payload.login_name)
+        .with_for_update()
+    )
+    normalized_code = payload.recovery_code.replace("-", "").replace(" ", "").lower()
+    code = session.get(PlayerRecoveryCode, hashlib.sha256(normalized_code.encode()).hexdigest())
+    if account is None or code is None or code.account_id != account.id:
+        raise HTTPException(status_code=400, detail="Account name or recovery code is incorrect")
+    account.password_hash = hash_password(payload.password)
+    # Rotate every recovery code and revoke every browser session atomically.
+    session.execute(delete(PlayerSession).where(PlayerSession.account_id == account.id))
+    codes = replace_recovery_codes(account, session)
+    session.commit()
+    return {"password_reset": True, "recovery_codes": codes}

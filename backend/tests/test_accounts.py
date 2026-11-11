@@ -149,3 +149,84 @@ def test_validation_never_echoes_passwords(session):
     assert response.status_code == 422
     assert "private" not in response.text
     assert response.headers["cache-control"] == "no-store"
+
+
+def test_recovery_reset_rotates_codes_revokes_sessions_and_preserves_workspace(session):
+    from app.models import PlayerRecoveryCode
+
+    client = client_for(session)
+    created = register(client).json()
+    codes = created["recovery_codes"]
+    assert len(codes) == len(set(codes)) == 8
+    rows = session.scalars(select(PlayerRecoveryCode)).all()
+    assert len(rows) == 8
+    assert all(row.code_hash not in codes for row in rows)
+    headers = {"X-Player-Session": created["token"]}
+    client.post("/account/workspace", headers=headers, json={"username": "player"})
+    other_session = client.post(
+        "/account/login", json={"login_name": "test-player", "password": PASSWORD}
+    ).json()["token"]
+    payload = {
+        "login_name": "test-player",
+        "password": "a-new-test-password",
+        "recovery_code": codes[0],
+    }
+    reset = client.post("/account/reset-password", json=payload)
+    assert reset.status_code == 200
+    assert reset.headers["cache-control"] == "no-store"
+    replacement = reset.json()["recovery_codes"]
+    assert len(replacement) == 8 and not set(replacement).intersection(codes)
+    for token in [created["token"], other_session]:
+        assert client.get("/account/me", headers={"X-Player-Session": token}).status_code == 401
+    assert client.post("/account/reset-password", json=payload).status_code == 400
+    assert (
+        client.post(
+            "/account/login", json={"login_name": "test-player", "password": PASSWORD}
+        ).status_code
+        == 401
+    )
+    login = client.post(
+        "/account/login", json={"login_name": "test-player", "password": payload["password"]}
+    )
+    assert login.status_code == 200
+    assert login.json()["workspace_username"] == "player"
+    assert session.scalar(select(PlayerAccount)).password_hash != payload["password"]
+
+
+def test_existing_accounts_can_generate_codes_only_with_password(session):
+    client = client_for(session)
+    created = register(client).json()
+    headers = {"X-Player-Session": created["token"]}
+    assert client.post("/account/recovery-codes", json={"password": PASSWORD}).status_code == 401
+    assert (
+        client.post(
+            "/account/recovery-codes", headers=headers, json={"password": "incorrect-password"}
+        ).status_code
+        == 401
+    )
+    generated = client.post("/account/recovery-codes", headers=headers, json={"password": PASSWORD})
+    assert generated.status_code == 200
+    assert len(generated.json()["recovery_codes"]) == 8
+    old = {
+        "login_name": "test-player",
+        "password": PASSWORD,
+        "recovery_code": created["recovery_codes"][0],
+    }
+    assert client.post("/account/reset-password", json=old).status_code == 400
+
+
+def test_recovery_code_is_bound_to_its_account_and_not_consumed_on_invalid_password(session):
+    client = client_for(session)
+    first = register(client, "first-player").json()
+    register(client, "second-player")
+    payload = {
+        "login_name": "second-player",
+        "password": PASSWORD,
+        "recovery_code": first["recovery_codes"][0],
+    }
+    assert client.post("/account/reset-password", json=payload).status_code == 400
+    payload["login_name"] = "first-player"
+    payload["password"] = "short"
+    assert client.post("/account/reset-password", json=payload).status_code == 422
+    payload["password"] = PASSWORD
+    assert client.post("/account/reset-password", json=payload).status_code == 200
