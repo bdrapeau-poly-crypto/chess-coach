@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from time import perf_counter
 
@@ -124,6 +125,9 @@ async def _fetch_games(
                 cached.last_modified = response.last_modified
                 collected.extend(reversed(response.games))
             session.commit()
+            # An unchanged recent archive is not a request to backfill older history.
+            if response.not_modified:
+                break
             if len(collected) >= cap:
                 break
     return collected[:cap]
@@ -152,18 +156,28 @@ async def run_ingest_job(job_id: int) -> None:
         cache_hits = 0
         cache_misses = 0
         try:
+            unfinished = session.scalar(
+                select(Game.id)
+                .join(User)
+                .where(
+                    User.username == job.username,
+                    Game.analysis_status != "completed",
+                )
+                .limit(1)
+            )
             payloads = await _fetch_games(
                 session,
                 job.username,
                 settings.max_games_per_ingest,
-                force_refresh=job.games_analyzed > 0,
+                force_refresh=job.games_analyzed > 0 or unfinished is not None,
             )
             job.games_fetched = len(payloads)
             session.commit()
             user = _get_or_create_user(session, job.username)
             session.commit()
 
-            with StockfishAnalyzer(settings) as analyzer:
+            with ExitStack() as stack:
+                analyzer = None
                 for payload in payloads:
                     row_id: int | None = None
                     try:
@@ -194,6 +208,8 @@ async def run_ingest_job(job_id: int) -> None:
                             session.add(row)
                             session.commit()
                         row_id = row.id
+                        if analyzer is None:
+                            analyzer = stack.enter_context(StockfishAnalyzer(settings))
                         analyze_game(session, row, analyzer)
                         job.games_analyzed += 1
                         job.lease_expires_at = datetime.now(UTC) + LEASE_DURATION
@@ -213,8 +229,9 @@ async def run_ingest_job(job_id: int) -> None:
                         logger.warning(
                             "Game failed during ingest job %s: %s", job_id, type(exc).__name__
                         )
-                cache_hits = analyzer.cache_hits
-                cache_misses = analyzer.cache_misses
+                if analyzer is not None:
+                    cache_hits = analyzer.cache_hits
+                    cache_misses = analyzer.cache_misses
 
             refresh_user_outputs(session, user.id)
             job = session.get(IngestJob, job_id)

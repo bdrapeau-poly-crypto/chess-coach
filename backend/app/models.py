@@ -295,3 +295,26 @@ class AiCostReservation(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
+
+
+class PlayerAccount(Base):
+    """App credentials and a saved public-player workspace, not Chess.com ownership."""
+
+    __tablename__ = "player_accounts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    login_name: Mapped[str] = mapped_column(String(64), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(256))
+    workspace_username: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PlayerSession(Base):
+    __tablename__ = "player_sessions"
+
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("player_accounts.id", ondelete="CASCADE"), index=True
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    account: Mapped[PlayerAccount] = relationship()

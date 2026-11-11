@@ -1,6 +1,10 @@
-import { FormEvent, lazy, Suspense, useEffect, useState } from "react";
+import { FormEvent, lazy, Suspense, useCallback, useEffect, useState } from "react";
 import {
   ApiError,
+  clearPlayerSession,
+  getPlayerAccount,
+  hasPlayerSession,
+  savePlayerWorkspace,
   authenticate,
   askCoach,
   clearSession,
@@ -26,6 +30,8 @@ import type {
   StyleMatch,
 } from "./types";
 import "./styles.css";
+import { AccountAccess } from "./components/AccountAccess";
+import type { PlayerAccount } from "./api/client";
 
 const CoachMessage = lazy(() =>
   import("./components/CoachMessage").then((module) => ({ default: module.CoachMessage })),
@@ -44,6 +50,7 @@ const WeaknessChart = lazy(() =>
 );
 
 type Tab = "profile" | "style" | "openings" | "blunders" | "practice" | "coach";
+const LAST_PLAYER_KEY = "chess-coach-last-player";
 const PENDING_JOB_KEY = "chess-coach-pending-job";
 
 interface PendingJob {
@@ -61,6 +68,7 @@ function storedPendingJob(): PendingJob | null {
 }
 
 export default function App() {
+  const [account, setAccount] = useState<PlayerAccount | null>(null);
   const [username, setUsername] = useState("");
   const [activeUser, setActiveUser] = useState("");
   const [job, setJob] = useState<IngestJob | null>(null);
@@ -80,19 +88,7 @@ export default function App() {
   const [accessKey, setAccessKey] = useState("");
   const [pendingJob, setPendingJob] = useState<PendingJob | null>(storedPendingJob);
 
-  useEffect(() => {
-    void getAuthSession()
-      .then((session) => {
-        if (!session.authenticated) clearSession();
-        setAuth(session);
-      })
-      .catch(() => {
-        setAuth(null);
-        setError("Could not connect to the analysis service. Reload this page to try again.");
-      });
-  }, []);
-
-  function beginColdStartNotice(initial: string): () => void {
+  const beginColdStartNotice = useCallback((initial: string): () => void => {
     setServiceMessage(initial);
     const timer = globalThis.setTimeout(
       () => setServiceMessage("The free analysis service may take about a minute to wake up…"),
@@ -102,9 +98,9 @@ export default function App() {
       globalThis.clearTimeout(timer);
       setServiceMessage("");
     };
-  }
+  }, []);
 
-  function handleError(caught: unknown, fallback: string) {
+  const handleError = useCallback((caught: unknown, fallback: string) => {
     if (caught instanceof ApiError && caught.status === 401) {
       clearSession();
       setAuth((current) => ({
@@ -113,15 +109,17 @@ export default function App() {
       }));
     }
     setError(caught instanceof Error ? caught.message : fallback);
-  }
+  }, []);
 
-  async function loadWorkspace(name: string) {
+  const loadWorkspace = useCallback(async (name: string, allowMissing = false) => {
     setBusy(true);
     setError("");
     const endNotice = beginColdStartNotice("Connecting to the analysis service…");
+    let profileFound = false;
     try {
-      const [nextProfile, matches, gap, openingRows, positions, cards] = await Promise.all([
-        getProfile(name),
+      const nextProfile = await getProfile(name);
+      profileFound = true;
+      const [matches, gap, openingRows, positions, cards] = await Promise.all([
         getStyleMatches(name),
         getStyleGap(name),
         getOpenings(name),
@@ -136,13 +134,50 @@ export default function App() {
       setDrills(cards);
       setActiveUser(name);
       setHistory([]);
+      window.localStorage.setItem(LAST_PLAYER_KEY, name);
+      return true;
     } catch (caught) {
-      handleError(caught, "Could not load player workspace");
+      if (!(allowMissing && !profileFound && caught instanceof ApiError && caught.status === 404)) {
+        handleError(caught, "Could not load player workspace");
+      }
+      if (!profileFound && caught instanceof ApiError && caught.status === 404) return false;
+      throw caught;
     } finally {
       endNotice();
       setBusy(false);
     }
-  }
+  }, [beginColdStartNotice, handleError]);
+
+  useEffect(() => {
+    void getAuthSession()
+      .then(async (session) => {
+        if (!session.authenticated) clearSession();
+        setAuth(session);
+        let savedName = window.localStorage.getItem(LAST_PLAYER_KEY);
+        if (hasPlayerSession()) {
+          try {
+            const saved = await getPlayerAccount();
+            setAccount(saved);
+            savedName = saved.workspace_username;
+          } catch (caught) {
+            if (caught instanceof ApiError && caught.status === 401) {
+              clearPlayerSession();
+              setError("Your sign-in has expired. Sign in again to restore your account.");
+            } else {
+              setError("Could not restore your account. Try signing in again.");
+            }
+          }
+        }
+        if (savedName && (!session.auth_required || session.authenticated)) {
+          setUsername(savedName);
+          await loadWorkspace(savedName).catch(() => undefined);
+        }
+      })
+      .catch(() => {
+        setAuth(null);
+        setError("Could not connect to the analysis service. Reload this page to try again.");
+      });
+  }, [loadWorkspace]);
 
   async function signIn(event: FormEvent) {
     event.preventDefault();
@@ -166,9 +201,42 @@ export default function App() {
     setAuth({ authenticated: false, auth_required: auth?.auth_required ?? true });
   }
 
+  async function accountSignedIn(next: PlayerAccount) {
+    setAccount(next);
+    const name = next.workspace_username || activeUser;
+    if (name) {
+      if (!next.workspace_username) setAccount(await savePlayerWorkspace(name));
+      setUsername(name);
+      await loadWorkspace(name);
+    }
+  }
+
+  function accountSignedOut() {
+    setAccount(null);
+    setProfile(null);
+    setActiveUser("");
+    setHistory([]);
+    setUsername("");
+    setJob(null);
+    window.localStorage.removeItem(LAST_PLAYER_KEY);
+    window.localStorage.removeItem(PENDING_JOB_KEY);
+    setPendingJob(null);
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     const name = username.trim().toLowerCase();
+    if (!name) return;
+    try {
+      if (account) setAccount(await savePlayerWorkspace(name));
+      if (await loadWorkspace(name, true)) return;
+      await analyzeNewest(name);
+    } catch (caught) {
+      handleError(caught, "Could not open player workspace");
+    }
+  }
+
+  async function analyzeNewest(name: string) {
     if (!name) return;
     if (auth?.auth_required && !auth.authenticated) {
       setError("Enter the private beta access key before analyzing games.");
@@ -278,13 +346,15 @@ export default function App() {
             disabled={busy || !auth || Boolean(auth.auth_required && !auth.authenticated)}
             type="submit"
           >
-            Analyze my games
+            Open my analysis
           </button>
         </form>
         <p className="player-note">
           Enter a Chess.com username to analyze public games. No password or Chess.com sign-in is needed.
+          Existing analysis opens immediately. A first visit starts analysis of your recent games.
           Practice feedback stays in this session; it does not verify ownership of the Chess.com account.
         </p>
+        <AccountAccess account={account} onSignedIn={accountSignedIn} onSignedOut={accountSignedOut} />
         {auth?.auth_required && (
           auth.authenticated ? (
             <div className="auth-status">
@@ -319,8 +389,9 @@ export default function App() {
         {job && (
           <p className="status">
             {job.status === "queued" ? "Waiting for analysis" : job.status === "running" ? "Analyzing your games" : job.status === "completed" ? "Analysis complete" : "Analysis stopped"}
-            {" · "}{job.games_analyzed ?? 0} games analyzed
+            {" · "}{job.games_analyzed ?? 0} games newly analyzed
             {job.games_fetched ? ` of ${job.games_fetched} fetched` : ""}
+            {job.status === "completed" && !job.games_analyzed && !job.games_failed && " · No new games needed analysis"}
             {Boolean(job.games_failed) && ` · ${job.games_failed} could not be analyzed`}
           </p>
         )}
@@ -332,6 +403,10 @@ export default function App() {
           <div className="section-heading">
             <p className="eyebrow">Player workspace</p>
             <h2>{profile.username}</h2>
+            <p>Your saved workspace contains {profile.summary.games} games. Updates check your 50 most recent games, keep completed analysis, and add new results.</p>
+            <button type="button" disabled={busy || !auth || Boolean(auth.auth_required && !auth.authenticated)} onClick={() => void analyzeNewest(activeUser)}>
+              Analyze my newest games
+            </button>
           </div>
           <nav className="tabs" aria-label="Player analysis">
             {(["profile", "style", "openings", "blunders", "practice", "coach"] as Tab[]).map(

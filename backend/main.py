@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.accounts import router as account_router
 from app.api.routes import router
 from app.config import ensure_durable_database, ensure_security_configuration, get_settings
 from app.database import SessionLocal, create_schema
@@ -52,6 +53,8 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "X-Player-Session"],
 )
 app.include_router(router)
+
+app.include_router(account_router)

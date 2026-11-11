@@ -12,6 +12,42 @@ import type {
 
 export const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/$/, "");
 
+export interface PlayerAccount {
+  login_name: string;
+  workspace_username: string | null;
+}
+
+const PLAYER_SESSION_KEY = "chess-coach-player-session";
+export function hasPlayerSession(): boolean {
+  return Boolean(window.localStorage.getItem(PLAYER_SESSION_KEY));
+}
+export function clearPlayerSession(): void {
+  window.localStorage.removeItem(PLAYER_SESSION_KEY);
+}
+export function getPlayerAccount(): Promise<PlayerAccount> {
+  return request("/account/me");
+}
+export async function playerSignIn(
+  mode: "login" | "register", loginName: string, password: string,
+): Promise<PlayerAccount> {
+  const account = await request<PlayerAccount & { token: string }>(`/account/${mode}`, {
+    method: "POST", body: JSON.stringify({ login_name: loginName, password }),
+  });
+  window.localStorage.setItem(PLAYER_SESSION_KEY, account.token);
+  return account;
+}
+export async function playerSignOut(): Promise<void> {
+  try {
+    await request("/account/logout", { method: "POST" });
+  } catch (error) {
+    if (!(error instanceof ApiError && error.status === 401)) throw error;
+  }
+  clearPlayerSession();
+}
+export function savePlayerWorkspace(username: string): Promise<PlayerAccount> {
+  return request("/account/workspace", { method: "POST", body: JSON.stringify({ username }) });
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -53,6 +89,8 @@ export async function request<T>(path: string, init: RequestOptions = {}): Promi
         signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
+          ...(typeof localStorage !== "undefined" && localStorage.getItem(PLAYER_SESSION_KEY)
+            ? { "X-Player-Session": localStorage.getItem(PLAYER_SESSION_KEY)! } : {}),
           ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
           ...fetchInit.headers,
         },

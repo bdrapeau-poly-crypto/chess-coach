@@ -158,3 +158,33 @@ notices and provide corresponding source under the GPL.
 
 Bundled Neon agent skills retain their Apache 2.0 license. Other dependencies
 retain their own licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+
+### Player accounts and saved analysis
+
+Player accounts save the selected public Chess.com workspace across devices.
+Create an account with a separate Chess Coach account name and a password of
+12 to 128 characters. Sign-in lasts up to 30 days on a device; signing out
+revokes that device session. Passwords use salted scrypt hashes. Only hashes
+of random session tokens are stored in the database. The browser retains the
+session token in local storage, so sign out on shared devices. Administrator
+authentication remains separate.
+
+Account recovery and password reset are not implemented. Keep the password
+in a password manager. Saving a workspace does not verify ownership of the
+Chess.com account, privatize its public game analysis, or save personal
+practice progress. Multiple accounts can save the same public workspace.
+
+Opening or restoring a saved workspace reads existing results without creating
+an ingest job. Guests can also return to their last workspace on the same
+browser. Use **Analyze my newest games** to explicitly check the 50 most recent
+games. Completed games are retained and skipped; new or unfinished games in
+that window are analyzed and added to existing results. An unchanged archive
+does not trigger older-history backfill. Stockfish is opened lazily only when
+an unfinished game needs it. The 50-game update window is the existing
+`MAX_GAMES_PER_INGEST` default, not an unlimited history synchronization.
+
+Deployment requires migration `b412fc5e901a` before the new backend starts.
+It adds `player_accounts` and `player_sessions` without modifying existing
+analysis tables. The normal backend Docker startup already runs migrations.
+Roll back application code without dropping these tables to preserve accounts.

@@ -93,3 +93,11 @@ button.secondary.dark:hover { color: white; border-color: #bd4e33; }
 }
 
 .player-note { max-width: 660px; color: #d9e2db; font-size: .9rem; line-height: 1.6; }
+
+.account-access { margin-top: 1rem; border-top: 1px solid #ffffff40; padding-top: 1rem; }
+.account-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+.account-form { display: grid; gap: .65rem; max-width: 32rem; margin-top: 1rem; }
+.account-form h2 { font-size: 1.25rem; }
+.account-form input { width: 100%; min-width: 0; }
+.account-access .text-button { color: inherit; }
+.section-heading > button { margin-top: .75rem; }
