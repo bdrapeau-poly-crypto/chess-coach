@@ -1,5 +1,6 @@
 import { Chessboard } from "react-chessboard";
 import ReactMarkdown from "react-markdown";
+import { readableCoachMarkdown, readableMoveReferences } from "../utils/moveNotation";
 import { parseBoardBlock } from "../utils/chessBoard";
 
 export function CoachMessage({ children }: { children: string }) {
@@ -18,7 +19,7 @@ export function CoachMessage({ children }: { children: string }) {
                   boardOrientation={board.orientation}
                   arePiecesDraggable={false}
                 />
-                <figcaption>{board.label}</figcaption>
+                <figcaption>{readableMoveReferences(board.label, [board.fen])}</figcaption>
               </figure>
             );
           }
@@ -26,7 +27,7 @@ export function CoachMessage({ children }: { children: string }) {
         },
       }}
     >
-      {children}
+      {readableCoachMarkdown(children)}
     </ReactMarkdown>
   );
 }

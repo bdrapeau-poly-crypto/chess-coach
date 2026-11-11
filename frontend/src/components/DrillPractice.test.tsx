@@ -85,7 +85,7 @@ describe("DrillPractice", () => {
     render(<DrillPractice username="player" cards={[card]} onComplete={vi.fn()} />);
 
     act(() => expect(drop("g1", "f3", "wN")).toBe(true));
-    expect(await screen.findByText(/Best move:/)).toHaveTextContent("e2e4");
+    expect(await screen.findByText(/Best move:/)).toHaveTextContent("e4");
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     act(() => expect(drop("e2", "e4")).toBe(true));
 

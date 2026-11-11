@@ -32,6 +32,10 @@ When a position would help, emit exactly this fenced format with valid JSON:
 ```chess-board
 {"fen":"<FEN>","label":"<short instruction>","orientation":"white|black"}
 ```
+Use standard algebraic notation (SAN) in every move reference, including board labels.
+Use move notation supplied by tools; never show raw coordinate strings such as e2e4.
+If the position is unavailable, describe the source and destination explicitly without
+guessing a piece, capture, check, or mate.
 Only use FENs returned by tools. Keep the response concise and actionable.
 """
 

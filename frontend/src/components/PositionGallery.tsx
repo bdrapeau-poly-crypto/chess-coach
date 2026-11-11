@@ -1,4 +1,5 @@
 import { Chessboard } from "react-chessboard";
+import { moveNotation } from "../utils/moveNotation";
 import type { Blunder } from "../types";
 
 export function PositionGallery({ positions }: { positions: Blunder[] }) {
@@ -14,8 +15,8 @@ export function PositionGallery({ positions }: { positions: Blunder[] }) {
           />
           <h3>{position.theme.replaceAll("_", " ")}</h3>
           <p>
-            Played <code>{position.played_move}</code>
-            {position.best_move ? <> · Better <code>{position.best_move}</code></> : null}
+            Played <code>{moveNotation(position.fen, position.played_move)}</code>
+            {position.best_move ? <> · Better <code>{moveNotation(position.fen, position.best_move)}</code></> : null}
           </p>
           <small>{position.centipawn_loss} centipawns lost</small>
         </article>

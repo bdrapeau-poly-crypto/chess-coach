@@ -6,6 +6,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.models import BlunderPosition, DrillCard, Game, WeaknessProfile
+from app.notation import move_notation
 from app.practice.leitner import queue_from_blunders
 from app.profiling.profiles import get_user
 
@@ -139,8 +140,8 @@ class CoachTools:
                 {
                     "ply": item.ply,
                     "fen": item.fen_before,
-                    "played_move": item.played_move_uci,
-                    "best_move": item.best_move_uci,
+                    "played_move": move_notation(item.fen_before, item.played_move_uci),
+                    "best_move": move_notation(item.fen_before, item.best_move_uci),
                     "centipawn_loss": item.centipawn_loss,
                     "theme": item.motif,
                 }

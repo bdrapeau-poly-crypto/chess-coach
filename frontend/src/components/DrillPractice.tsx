@@ -3,6 +3,7 @@ import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import type { Arrow, Piece, Square } from "react-chessboard/dist/chessboard/types";
 import { recordDrillAttempt } from "../api/client";
+import { moveNotation } from "../utils/moveNotation";
 import type { DrillCard } from "../types";
 
 type DrillPhase =
@@ -164,7 +165,7 @@ export function DrillPractice({
           </p>
         )}
         {phase === "incorrect" && correctMove && (
-          <p className="answer">Best move: <strong>{correctMove}</strong></p>
+          <p className="answer">Best move: <strong>{moveNotation(activeCard.fen, correctMove)}</strong></p>
         )}
         {error && <p className="error drill-error" role="alert">{error}</p>}
         <div className="drill-actions">
