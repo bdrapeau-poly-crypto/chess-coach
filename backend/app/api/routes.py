@@ -5,6 +5,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from time import perf_counter
 
+import chess
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
@@ -318,6 +319,16 @@ def openings(username: str, session: Session = Depends(get_session)) -> dict:
     }
 
 
+def drill_position_label(fen: str, played_move_uci: str) -> str:
+    """Describe the historical move in the displayed pre-move position."""
+    try:
+        board = chess.Board(fen)
+        played = board.parse_uci(played_move_uci)
+        return f"Find a better move than {board.san(played)}"
+    except ValueError:
+        return "Find the best move in this position"
+
+
 @router.get("/drill/{username}/queue", response_model=list[DrillCardResponse])
 def drill_queue(
     username: str,
@@ -338,7 +349,9 @@ def drill_queue(
             box=card.box,
             due_at=card.due_at,
             fen=card.position.fen_before,
-            label=f"Find the improvement after {card.position.played_move_uci}",
+            label=drill_position_label(
+                card.position.fen_before, card.position.played_move_uci
+            ),
             orientation=card.position.game.user_color,
         )
         for card in cards
