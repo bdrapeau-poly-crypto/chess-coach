@@ -207,3 +207,7 @@ after moving from the old Vercel address. No saved analysis is transferred
 through browser storage.
 
 The former Vercel frontend redirects visitors to the Netlify website.
+
+After backend and frontend CI checks pass on `main`, the Netlify CI job
+triggers the site-specific production build hook held in GitHub Secrets.
+The hook targets only ChessPattern Coach and builds the latest `main`.

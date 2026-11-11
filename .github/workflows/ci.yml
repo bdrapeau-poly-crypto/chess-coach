@@ -46,3 +46,36 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  netlify:
+    needs: [backend, frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Trigger the ChessPattern Coach production build
+        env:
+          NETLIFY_BUILD_HOOK: ${{ secrets.NETLIFY_BUILD_HOOK }}
+        run: |
+          python - <<'PY'
+          import os
+          import urllib.error
+          import urllib.request
+
+          url = os.environ.get("NETLIFY_BUILD_HOOK")
+          if not url:
+              raise SystemExit("The site-specific Netlify build hook is not configured")
+          request = urllib.request.Request(
+              url, data=b"{}", method="POST",
+              headers={"Content-Type": "application/json"},
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  if response.status not in (200, 201, 202):
+                      raise SystemExit("Netlify did not accept the production build")
+          except urllib.error.URLError:
+              raise SystemExit("Could not trigger the Netlify production build") from None
+          print("Netlify accepted the ChessPattern Coach production build")
+          PY
