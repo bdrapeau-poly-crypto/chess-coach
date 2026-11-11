@@ -88,6 +88,8 @@ button.secondary.dark:hover { color: white; border-color: #bd4e33; }
 @media (max-width: 600px) {
   .hero { padding-top: 4rem; }
   .stats { grid-template-columns: 1fr; }
-  .player-form > * { width: 100%; }
+  .player-form > :not(.sr-only) { width: 100%; }
   .split-panel, .drill-layout, .position-grid { grid-template-columns: 1fr; }
 }
+
+.player-note { max-width: 660px; color: #d9e2db; font-size: .9rem; line-height: 1.6; }

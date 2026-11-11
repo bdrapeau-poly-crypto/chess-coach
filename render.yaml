@@ -14,6 +14,8 @@ services:
         sync: false
       - key: ALLOW_EPHEMERAL_DATABASE
         value: "false"
+      - key: PUBLIC_PLAYER_ACCESS
+        value: "true"
       - key: AUTH_REQUIRED
         value: "true"
       - key: APP_ACCESS_KEY

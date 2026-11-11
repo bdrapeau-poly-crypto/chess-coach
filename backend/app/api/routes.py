@@ -44,6 +44,7 @@ from app.security import (
     issue_session_token,
     request_identity,
     require_authenticated,
+    require_player_access,
     verify_session_token,
 )
 from app.telemetry import record_coach_result, record_usage_event
@@ -83,6 +84,8 @@ def auth_status(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> SessionResponse:
+    if settings.public_player_access:
+        return SessionResponse(authenticated=True, auth_required=False)
     authenticated = not settings.auth_required or verify_session_token(
         bearer_token(request), settings
     )
@@ -124,7 +127,7 @@ def ingest(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> JobResponse:
-    principal = require_authenticated(request, settings)
+    principal = require_player_access(request, settings)
     enforce_rate_limit(
         session,
         category="ingest",
@@ -150,7 +153,7 @@ def ingest_status(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    require_authenticated(request, settings)
+    require_player_access(request, settings)
     job = session.get(IngestJob, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -352,7 +355,7 @@ def prepare_drill_queue(
     user = require_user(session, username)
     if user.is_demo:
         return {"username": user.username, "created": 0, "demo": True}
-    principal = require_authenticated(request, settings)
+    principal = require_player_access(request, settings)
     enforce_rate_limit(
         session,
         category="drill",
@@ -380,7 +383,13 @@ def drill_attempt(
         raise HTTPException(status_code=404, detail="Drill card not found")
     expected = card.position.best_move_uci
     correct = expected is not None and payload.attempted_move_uci.lower() == expected.lower()
-    if user.is_demo:
+    if user.is_demo or settings.public_player_access:
+        if not user.is_demo:
+            enforce_rate_limit(
+                session, category="drill",
+                identity=require_player_access(request, settings),
+                limit=settings.drill_mutations_per_hour,
+            )
         return {
             "attempt_id": None,
             "correct": correct,
@@ -388,9 +397,10 @@ def drill_attempt(
             "previous_box": card.box,
             "next_box": card.box,
             "due_at": card.due_at,
-            "demo": True,
+            "demo": user.is_demo,
+            "progress_saved": False,
         }
-    principal = require_authenticated(request, settings)
+    principal = require_player_access(request, settings)
     enforce_rate_limit(
         session,
         category="drill",
@@ -429,7 +439,7 @@ def coach(
     settings: Settings = Depends(get_settings),
 ) -> CoachResponse:
     require_user(session, payload.username)
-    principal = require_authenticated(request, settings)
+    principal = require_player_access(request, settings)
     enforce_rate_limit(
         session,
         category="coach",

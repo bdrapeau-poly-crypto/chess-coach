@@ -4,9 +4,10 @@ Chess Coach ingests public Chess.com games, analyzes a bounded set with Stockfis
 reviewable weakness profile, turns the player's own mistakes into Leitner drills, and exposes
 live data to an Anthropic or OpenAI tool-use coaching loop.
 
-> **Status:** early implementation. Demo games and GM seed profiles are explicitly illustrative;
-> they are not
-> yet a validated all-grandmaster reference corpus. `local_accuracy` is a transparent score
+> **Public access:** analyze public Chess.com games without a password. Practice feedback is
+> session-only and does not establish ownership of a Chess.com account.
+> Grandmaster seed profiles remain explicitly illustrative; they are not
+> a validated all-grandmaster reference corpus. `local_accuracy` is a transparent score
 > derived from average centipawn loss and is not Chess.com Accuracy.
 
 ## Architecture
@@ -17,7 +18,7 @@ live data to an Anthropic or OpenAI tool-use coaching loop.
 - Database-backed ingest deduplication and per-game failure isolation
 - Leitner practice cards generated from the player's own blunder positions
 - Claude or OpenAI tools scoped to the requested player
-- Signed private-beta sessions, database-backed request limits, and usage instrumentation
+- Password-free player access, protected administrator sessions, per-visitor request limits, and usage instrumentation
 
 ## Local development
 
@@ -48,7 +49,7 @@ npm run dev
 
 Open <http://localhost:5173>. The demo user and illustrative GM profiles are seeded
 idempotently on first startup. Its four games are labeled local illustrative fixtures; they are
-not represented as a real person's Chess.com history. Set `AUTH_REQUIRED=true`, a private
+not represented as a real person's Chess.com history. Set `PUBLIC_PLAYER_ACCESS=false`, `AUTH_REQUIRED=true`, a private
 `APP_ACCESS_KEY` of at least 16 characters, and a random `SESSION_SECRET` of at least 32
 characters to exercise private-beta authentication locally.
 
@@ -66,7 +67,7 @@ deploying, configure these secret environment variables on the web service:
 
 - `DATABASE_URL`: a durable PostgreSQL connection URL
 - `ANTHROPIC_API_KEY`: the server-side coach credential
-- `APP_ACCESS_KEY`: the private-beta passphrase entered by authorized users
+- `APP_ACCESS_KEY`: the administrator credential used by monitoring and maintenance
 - `SESSION_SECRET`: a random signing secret of at least 32 characters
 - `CORS_ORIGINS`: the exact Vercel production origin
 
@@ -125,12 +126,17 @@ two hours if cleanup is interrupted. The workflow uses a project-scoped
 
 ## Data and security boundaries
 
-Chess.com PubAPI data is public and read-only, but drill history, operational metrics, and coach
-activity are application data. In private-beta mode, ingestion, coaching, real-player drill
-mutations, job status, and metrics require a short-lived signed bearer token. The long-lived
-access key is exchanged once and is not retained by the frontend. The shared demo drill is
-deliberately stateless. This is access control for a private beta, not individual Chess.com
-account ownership verification; use an identity provider before supporting unrelated users.
+Public player access is enabled by `PUBLIC_PLAYER_ACCESS=true` (the default). Visitors can
+analyze public Chess.com games and use the coach without a password. Ingestion, coaching,
+and drill submissions are rate-limited by network address; the daily AI budget remains in force.
+Public practice submissions return feedback without changing a player's stored schedule or history.
+The demo entry button is removed; illustrative fixtures remain for tests and clearly labeled
+grandmaster comparisons. Setting `PUBLIC_PLAYER_ACCESS=false` restores the private-beta gate.
+
+Keep `AUTH_REQUIRED=true` in production. The tracked-user list, operational metrics, and
+maintenance sessions still require the administrator credential. Monitoring and nightly refresh
+continue to use signed administrator sessions. Public Chess.com usernames do not establish
+account ownership; persistent personal progress requires a future individual identity flow.
 Secrets remain server-side and must never use a `VITE_` prefix.
 
 Usage instrumentation stores request duration, provider/model, token counts, prompt-cache

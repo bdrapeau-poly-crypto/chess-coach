@@ -86,7 +86,10 @@ export default function App() {
         if (!session.authenticated) clearSession();
         setAuth(session);
       })
-      .catch(() => setAuth({ authenticated: false, auth_required: true }));
+      .catch(() => {
+        setAuth(null);
+        setError("Could not connect to the analysis service. Reload this page to try again.");
+      });
   }, []);
 
   function beginColdStartNotice(initial: string): () => void {
@@ -266,22 +269,22 @@ export default function App() {
             onChange={(event) => setUsername(event.target.value)}
             placeholder="Chess.com username"
             autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            required
+            maxLength={25}
           />
           <button
-            disabled={busy || Boolean(auth?.auth_required && !auth.authenticated)}
+            disabled={busy || !auth || Boolean(auth.auth_required && !auth.authenticated)}
             type="submit"
           >
             Analyze my games
           </button>
-          <button
-            disabled={busy}
-            type="button"
-            className="secondary"
-            onClick={() => void loadWorkspace("demo")}
-          >
-            Try demo
-          </button>
         </form>
+        <p className="player-note">
+          Enter a Chess.com username to analyze public games. No password or Chess.com sign-in is needed.
+          Practice feedback stays in this session; it does not verify ownership of the Chess.com account.
+        </p>
         {auth?.auth_required && (
           auth.authenticated ? (
             <div className="auth-status">
@@ -305,7 +308,7 @@ export default function App() {
         {pendingJob && (
           <button
             className="resume-button"
-            disabled={busy || Boolean(auth?.auth_required && !auth.authenticated)}
+            disabled={busy || !auth || Boolean(auth.auth_required && !auth.authenticated)}
             type="button"
             onClick={() => void resumeAnalysis()}
           >
@@ -315,7 +318,10 @@ export default function App() {
         {serviceMessage && <p className="status" role="status">{serviceMessage}</p>}
         {job && (
           <p className="status">
-            Job {job.job_id}: {job.status} · {job.games_analyzed ?? 0} analyzed
+            {job.status === "queued" ? "Waiting for analysis" : job.status === "running" ? "Analyzing your games" : job.status === "completed" ? "Analysis complete" : "Analysis stopped"}
+            {" · "}{job.games_analyzed ?? 0} games analyzed
+            {job.games_fetched ? ` of ${job.games_fetched} fetched` : ""}
+            {Boolean(job.games_failed) && ` · ${job.games_failed} could not be analyzed`}
           </p>
         )}
         {error && <p className="error" role="alert">{error}</p>}
@@ -439,7 +445,7 @@ export default function App() {
                     rows={3}
                   />
                   <button
-                    disabled={busy || Boolean(auth?.auth_required && !auth.authenticated)}
+                    disabled={busy || !auth || Boolean(auth.auth_required && !auth.authenticated)}
                     type="submit"
                   >
                     Ask coach

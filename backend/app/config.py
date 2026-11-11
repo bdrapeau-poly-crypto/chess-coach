@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     job_poll_seconds: float = 1.0
     coach_history_limit: int = 12
     coach_max_tool_rounds: int = 5
+    public_player_access: bool = True
     auth_required: bool = False
     app_access_key: str | None = None
     session_secret: str | None = None
@@ -77,6 +78,8 @@ def ensure_durable_database(settings: Settings) -> None:
 
 
 def ensure_security_configuration(settings: Settings) -> None:
+    if settings.environment.lower() == "production" and not settings.auth_required:
+        raise RuntimeError("Production requires administrator authentication")
     if not settings.auth_required:
         return
     if not settings.app_access_key or len(settings.app_access_key) < 16:

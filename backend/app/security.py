@@ -82,6 +82,13 @@ def require_authenticated(request: Request, settings: Settings) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def require_player_access(request: Request, settings: Settings) -> str:
+    """Public players share no admin privileges and are limited per network address."""
+    if settings.public_player_access:
+        return f"public:{request_identity(request, settings)}"
+    return require_authenticated(request, settings)
+
+
 def request_identity(request: Request, settings: Settings) -> str:
     if settings.trust_proxy_headers:
         forwarded = request.headers.get("x-forwarded-for")

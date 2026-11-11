@@ -158,6 +158,7 @@ export function recordDrillAttempt(
   attemptedMoveUci: string,
 ): Promise<{
   correct: boolean;
+  progress_saved?: boolean;
   correct_move: string | null;
   due_at: string;
   next_box: number;

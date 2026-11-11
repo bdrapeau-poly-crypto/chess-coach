@@ -13,6 +13,7 @@ def secured_client(session, **setting_values) -> TestClient:
     settings = Settings(
         _env_file=None,
         auth_required=True,
+        public_player_access=False,
         app_access_key="private-beta-access",
         session_secret="s" * 32,
         **setting_values,

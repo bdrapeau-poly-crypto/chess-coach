@@ -59,7 +59,7 @@ jq -e '.status == "ok" and .probe == true' "$work_dir/stockfish.json" >/dev/null
 curl "${curl_common[@]}" "$FRONTEND_URL" --output /dev/null
 
 curl "${curl_common[@]}" "$API_URL/auth/session" --output "$work_dir/auth-status.json"
-jq -e '.auth_required == true and .authenticated == false' "$work_dir/auth-status.json" >/dev/null
+jq -e '.auth_required == false and .authenticated == true' "$work_dir/auth-status.json" >/dev/null
 
 jq -n --arg access_key "$ACCESS_KEY" '{access_key: $access_key}' \
   | curl "${curl_common[@]}" \

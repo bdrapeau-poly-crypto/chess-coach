@@ -114,9 +114,9 @@ export function DrillPractice({
           setCorrectMove(result.correct_move);
           setPhase(result.correct ? "correct" : "incorrect");
           setFeedback(
-            result.correct
-              ? "Correct — this card will return later."
-              : "Not quite — this card returns to box one.",
+            result.progress_saved === false
+              ? (result.correct ? "Correct. Continue to the next position." : "Not quite. Review the best move, then try again.")
+              : (result.correct ? "Correct. This card will return later." : "Not quite. This card returns to box one."),
           );
         })
         .catch((caught: unknown) => {
